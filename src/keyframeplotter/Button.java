@@ -5,18 +5,34 @@ import processing.core.PConstants;
 
 public class Button {
 	
+	/*************************************
+	 *  							 	 *
+	 *       Variables and Objects       *
+	 * 									 *
+	 * ***********************************/		
+
 	// Processing object
-	private PApplet p;
-	// Rectangle button parameters
-	int height, width;	
-	// Circle button parameters
-	int radius;
-	// Common parameters
-	int posX, posY,  weight, r_b, g_b, b_b;
-	// Label parameters
-	String label;
-	int text_size, r_t, g_t, b_t;
+	private PApplet p;							
 	
+	// Rectangle button parameters
+	float height, width;							
+	
+	// Circle button parameters
+	float radius;									
+	
+	// Common parameters
+	float 	posX, posY, x_max_px, x_min_px, y_max_px, y_min_px, margin;;							
+	int		weight, r_b, g_b, b_b;	
+	String label;								// Button label text
+	int text_size, r_t, g_t, b_t;				// Label parameters
+	boolean clicked;
+	
+	
+	/*************************************
+	 *  					             *
+	 *             Functions             *
+	 * 						             *
+	 * ********************************* */
 		
 	Button(PApplet _p){
 		
@@ -33,6 +49,7 @@ public class Button {
 		r_b = 200;
 		g_b = 200;
 		b_b = 200;
+		margin = 10;
 		
 		// Set default label parameters
 		label = "";
@@ -48,7 +65,7 @@ public class Button {
 	}
 	
 	// Initialize rectangular button
-	void init(String p_text, int p_posX, int p_posY, int p_height, int p_width){	
+	void init(String p_text, float p_posX, float p_posY, float p_width, float p_height){	
 		height = p_height;
 		width = p_width;
 		radius = 0;
@@ -56,7 +73,7 @@ public class Button {
 	}
 	
 	// Initialize circular button
-	void init(String p_text, int p_posX, int p_posY, int p_radius){	
+	void init(String p_text, float p_posX, float p_posY, float p_radius){	
 		PApplet.println("Initializing circle");
 		height = 0;
 		width = 0;
@@ -65,10 +82,16 @@ public class Button {
 	}
 	
 	// Initialize the button with fewer settings
-	private void init(String p_text, int p_posX, int p_posY){		
+	private void init(String p_text, float p_posX, float p_posY){		
 		label = p_text;
 		posX = p_posX;
 		posY = p_posY;		
+		clicked = false;
+		
+		x_min_px = posX - width/2;
+		x_max_px = posX + width/2;
+		y_min_px = posY - height/2;
+		y_max_px = posY + height/2;
 	}
 	
 	// Draw the button and label
@@ -82,8 +105,8 @@ public class Button {
 		// Draw rectangular button
 		if(radius == 0) {		
 	        // Determine corner location
-	        int rectX = posX - (p.width/ 2);
-	        int rectY = posY - (p.height / 2);
+	        float rectX = posX - (width/ 2);
+	        float rectY = posY - (height / 2);
 	        
 	        // Draw button	        
 	        p.rect(rectX, rectY, width, height);

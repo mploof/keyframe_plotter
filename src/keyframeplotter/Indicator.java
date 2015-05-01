@@ -1,0 +1,106 @@
+package keyframeplotter;
+
+import processing.core.PApplet;
+import processing.core.PConstants;
+
+public class Indicator {
+
+	
+	/*************************************
+	 *  							 	 *
+	 *       Variables and Objects       *
+	 * 									 *
+	 * ***********************************/		
+
+	// Processing object
+	private PApplet p;							
+	
+
+	// Indicator properties
+	float height, width, posX, posY, x_max_px, x_min_px, y_max_px, y_min_px, margin;							
+	int		weight, r_b, g_b, b_b;	
+	String label_0, label_1, value_0, value_1;	// Button label text
+	int text_size, r_t, g_t, b_t;				// Label parameters
+	boolean clicked;
+	
+	
+	/*************************************
+	 *  					             *
+	 *             Functions             *
+	 * 						             *
+	 * ********************************* */
+		
+	Indicator(PApplet _p){
+		
+		// Copy the Processing object
+		p = _p;
+		
+		// Set default button parameters		
+		posX = -100;
+		posY = -100;
+		height = 100;
+		width = 200;
+		weight = 1;
+		r_b = 200;
+		g_b = 200;
+		b_b = 200;
+		margin = 10;
+		
+		// Set default label parameters
+		label_0 = "";
+		label_1 = "";
+		text_size = 14;
+		r_t = 0;
+		g_t = 0;
+		b_t = 0;
+		
+	}
+	
+	void init(PApplet _p){
+		p = _p;
+	}
+	
+	// Initialize indicator
+	void init(String p_label_0, String p_label_1, float p_posX, float p_posY, float p_width, float p_height){	
+		height = p_height;
+		width = p_width;			
+		label_0 = p_label_0.concat(": ");
+		label_1 = p_label_1.concat(": ");
+		posX = p_posX;
+		posY = p_posY;	
+		
+		x_min_px = posX - width/2;
+		x_max_px = posX + width/2;
+		y_min_px = posY - height/2;
+		y_max_px = posY + height/2;
+	}
+
+		
+	// Draw the indicator, labels, and values
+	void draw(String p_value_0, String p_value_1){
+		
+		// Set drawing parameters
+		p.stroke(0);
+        p.strokeWeight(weight);
+		p.fill(r_b, g_b, b_b);
+		
+        // Determine corner location
+        float rectX = posX - (width/ 2);
+        float rectY = posY - (height / 2);
+        
+        // Draw button	        
+        p.rect(rectX, rectY, width, height);		
+        
+        // Draw label
+        p.fill(r_t, g_t, b_t);
+		p.textSize(text_size);
+		p.textAlign(PConstants.LEFT, PConstants.CENTER);
+		int text_margin = 5;
+		if(p_value_1 != "NULL"){
+		    p.text(label_0.concat(p_value_0), posX - width/2 + text_margin, posY - height/4);
+		    p.text(label_1.concat(p_value_1), posX - width/2 + text_margin, posY + height/4);
+		}
+		else
+			p.text(label_0.concat(p_value_0), posX, posY);        
+	}
+}

@@ -16,7 +16,12 @@ public class Grid {
 	private PApplet p;
 	
 	// Class variables
-	float x_max, x_min, x_inc, y_max, y_min, y_inc, vert_lines, horiz_lines, x_zero, y_zero;
+	float
+	top_margin, bottom_margin, left_margin, right_margin,
+	x_max_px, x_min_px, y_max_px, y_min_px, height, width,
+	x_max, x_min, x_inc, x_range, x_inc_px, x_zero, vert_lines, 
+	y_max, y_min, y_inc, y_range, y_inc_px, y_zero, horiz_lines;
+	 
 	
 	/*************************************
 	 *  					             *
@@ -24,8 +29,12 @@ public class Grid {
 	 * 						             *
 	 * ********************************* */
 	 
-	Grid(PApplet _p){
+	Grid(PApplet _p, float _top_margin, float _bottom_margin, float _left_margin, float _right_margin){
 		p = _p;
+		top_margin = _top_margin;
+		bottom_margin = _bottom_margin;
+		left_margin = _left_margin;
+		right_margin = _right_margin;
 	}
 	
 
@@ -39,51 +48,106 @@ public class Grid {
 	 *
 	 */
 	void init(int _x_max, int _x_min, int _x_inc, int _y_max, int _y_min, int _y_inc){
-		x_max = _x_max;
-		x_min = _x_min;
-		y_max = _y_max;
-		y_min = _y_min;
-		x_inc = _x_inc;
-		y_inc = _y_inc;
+		
+		// Graph frame variables
+		x_max_px = p.width - right_margin;
+		x_min_px = left_margin;
+		y_max_px = p.height - bottom_margin;
+		y_min_px = top_margin;
+		height = y_max_px - y_min_px;
+		width = x_max_px - x_min_px;
+		
+		x_max = _x_max;							// Max x value in graph units
+		x_min = _x_min;							// Min x value in graph units
+		x_range = x_max - x_min;
+		
+		y_max = _y_max;							// Max y value in graph units
+		y_min = _y_min;							// Min y value in graph units
+		y_range = y_max - y_min;				// Width in graph units
+		
+		x_inc = _x_inc;							// x increment size in graph units
+		y_inc = _y_inc;							// y increment size in graph units
+		
+		x_inc_px = width / (x_max - x_min);		// Width in pixels of each x increment
+		y_inc_px = height / (y_max - y_min);	// Height in pixels of each y increment
 		
 		vert_lines = (x_max - x_min) / x_inc;
 		horiz_lines = (y_max - y_min) / y_inc;
+		
+		
+		
+		x_zero = (-x_min) / x_inc * (width / vert_lines) + x_min_px;
+	    y_zero = (height - ((-y_min) / y_inc * (height / horiz_lines))) + y_min_px;
+		
+	    
+	    
+	}
+	
+	// Returns x graph value of mouse position
+	float x(){
+		return x(p.mouseX);		
+	}
+	
+	// Returns x graph value of arbitrary input
+	float x(float p_input){
+		
+		if(p_input > x_max_px)
+			return x_max;
+		else if(p_input < x_min_px)
+			return x_min;
+		else
+			return (p_input - x_zero) / x_inc_px;
+	}
+	
+	
+	// Returns y graph value of mouse position
+	float y(){
+		return y(p.mouseY);
+	}
+	
+	// Returns y graph value of arbitrary input
+	float y(float p_input){
+		if(p_input > y_max_px)
+			return y_min;
+		else if(p_input < y_min_px)
+			return y_max;
+		else
+			return -(p_input - y_zero) / y_inc_px;
 	}
 	
 	void draw() {
 		
 		// Clear the screen and set white background
-		p.clear();
-		p.background(255, 255, 255);
+		p.stroke(0);
+		p.strokeWeight(3);
+		p.fill(255, 255, 255);
+		p.rect(left_margin, top_margin, x_max_px - x_min_px, y_max_px - y_min_px);
 		
-		// Draw grid lines:
+		// Draw grid lines
 		p.stroke(200);
 	    p.strokeWeight(1);
-	    int x_line = 0;
-	    int y_line = 0; 
+
 	    	// Horizontals
 		for(byte i = 0; i < horiz_lines; i++){
-			p.line(0, (p.height / horiz_lines) * i, p.width, (p.height / horiz_lines) * i);
+			p.line(x_min_px, ((height / horiz_lines) * i) + y_min_px, x_max_px, ((height / horiz_lines) * i) + y_min_px);
 		}
 			// Verticals
 		for(byte i = 0; i < vert_lines; i++){
-		   p.line((p.width / vert_lines) * i, 0, (p.width / vert_lines) * i, p.height); 
-		}
-		
+		   p.line(((width / vert_lines) * i) + x_min_px, y_min_px, ((width / vert_lines) * i) + x_min_px, y_max_px); 
+		}		
 			
 		// Draw zero lines		
 	    p.stroke(0);
 	    p.strokeWeight(2);
-	    	// Find location of lines
-	    x_zero = (-x_min) / x_inc * (p.width / vert_lines);
-	    y_zero = p.height - ((-y_min) / y_inc * (p.height / horiz_lines));
 	    p.fill(0);
+
+
 	   
 	       	// Don't draw the lines if they're off the screen
 	    if(x_zero >= 0)
-	    	p.line(x_zero, 0, x_zero, p.height);
+	    	p.line(x_zero, y_min_px, x_zero, y_max_px);
 	    if(y_zero >= 0)
-	    	p.line(0, y_zero, p.width, y_zero);
+	    	p.line(x_min_px, y_zero, x_max_px, y_zero);
 	
 		// Draw the numbers
 		PFont f;
@@ -94,14 +158,17 @@ public class Grid {
 		// X Scale
 		p.textAlign(PConstants.LEFT, PConstants.TOP);
 		for(byte i = 0; i < vert_lines; i++){
-			// Don't print values less than 0
-			if((int)((i * x_inc) + x_min) >=0)
-				p.text((int)((i * x_inc) + x_min), (p.width / vert_lines) * i + 5, y_zero);     
+			// Don't print values less than 0 or values that are out of the graph boundary
+			float location = ((width / vert_lines) * i + 5) + x_min_px;
+			if((int)((i * x_inc) + x_min) >=0 && location > x_min_px && location < x_max_px )
+				p.text((int)((i * x_inc) + x_min), location, y_zero);     
 		}		
 		// Y Scale
 		p.textAlign(PConstants.RIGHT);
 		for(byte i = 0; i < horiz_lines; i++){
-		     p.text((int)(y_max - (i * y_inc)), x_zero - 5, (p.height / horiz_lines) * i - 5);			          
+			float location = ((height / horiz_lines) * i - 5) + y_min_px;
+			if(location > y_min_px && location < y_max_px)
+				p.text((int)(y_max - (i * y_inc)), x_zero - 5, location);			          
 		}
 	}
 }
