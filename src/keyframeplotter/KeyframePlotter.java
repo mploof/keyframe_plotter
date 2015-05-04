@@ -1,6 +1,7 @@
 package keyframeplotter;
 
 import java.util.ArrayList;
+import java.util.Collections;
 
 import processing.core.PApplet;
 import processing.serial.*;
@@ -8,16 +9,14 @@ import processing.serial.*;
 
 public class KeyframePlotter extends PApplet {	
 	
-	ArrayList<Button> key_point = new ArrayList<Button>();	// List of buttons that will represent key frames
+	ArrayList<Button> key_frame = new ArrayList<Button>();	// List of buttons that will represent key frames
 	Serial myPort;        									// The serial port
 	Grid grid = new Grid(this, 50, 30, 30, 105);			// Grid object
 	Bounce bounce = new Bounce(this);						// Mouse debouncing object
 	Indicator graph_loc = new Indicator(this);
 	Indicator mouse_loc = new Indicator(this);
-	Button input = new Button(this);
-	Button modify = new Button(this);
 	Button send = new Button(this);
-	Button state_ind = new Button(this);
+	Button title = new Button(this);
 	
 	
 	// Program states
@@ -30,7 +29,7 @@ public class KeyframePlotter extends PApplet {
 	final int INTERP = 6;
 	int state = GET_INPUT;
 	
-	final int MAX_KEYFRAMES = 7;
+	final int MAX_KF = 7;
 	
 	float x = -1000;   										// x coordinate points retrieved from MCU
 	float y = -1000;										// y coordinate points retrieved from MCU
@@ -40,13 +39,13 @@ public class KeyframePlotter extends PApplet {
 	
 	public void setup() {
 		size(800, 650);
-		background(255, 255, 255);		
+		background(100, 100, 100);		
 		grid.init(55, -5, 5, 380, -20, 20);
 		grid.draw();
 		
 		// Initialize state indicator
-		state_ind.init("Input Key Points", width/2, 25, 200, 30);
-		state_ind.draw();
+		title.init("Key Frame Editor", width/2, 25, 200, 30);
+		title.draw();
 		
 		// Initialize buttons and indicators in right tool bar
 		float b_width = 75;
@@ -54,12 +53,8 @@ public class KeyframePlotter extends PApplet {
 		float b_margin = 10;
 		float b_offset = b_margin + b_height/2;
 		graph_loc.init("Xg", "Yg", width - (75/2) - 15, (50/2) + grid.y_min_px, b_width, b_height);
-		mouse_loc.init("Xm", "Ym", graph_loc.posX, graph_loc.y_max_px + b_offset, b_width, b_height);
-		input.init("Input", graph_loc.posX, mouse_loc.y_max_px + b_offset, b_width, b_height);
-		input.draw();
-		modify.init("Modify", input.posX, input.y_max_px + b_offset, b_width, b_height);
-		modify.draw();
-		send.init("Send", modify.posX, modify.y_max_px + b_offset, b_width, b_height);
+		mouse_loc.init("Xm", "Ym", graph_loc.posX, graph_loc.y_max_px + b_offset, b_width, b_height);	
+		send.init("Send", graph_loc.posX, mouse_loc.y_max_px + b_offset, b_width, b_height);
 		send.draw();
 		
 	}
@@ -68,17 +63,16 @@ public class KeyframePlotter extends PApplet {
 		
 		// Always do these things		
 		updateMousePos();
-		//checkButtons();
+		checkButtons();		
 
 		// Then execute the current state
 		switch(state){
 			case GET_INPUT:
 				getInput();
 				break;
-			case MODIFY_INPUT:
-				modifyInput();
-				break;
 			case SEND_DATA:
+				sendData();
+				state = GET_INPUT;
 				break;
 			case CONFIRM:
 				break;
@@ -92,130 +86,152 @@ public class KeyframePlotter extends PApplet {
 	}
 	
 	void checkButtons(){
-		
-	}
-	
-	void getInput(){
-		
-		// Set state indicator
-		state_ind.label = "Input Key Points";
-		state_ind.draw();
-		
-		if(bounce.get() == false && mousePressed == true){
-
-			// Right click to finish adding points
-			if(mouseButton == RIGHT || key_point.size() == MAX_KEYFRAMES){
-				state++;
-				print("Done adding key frames");
-			}
-			
-			// Left Click to add point
-			else if(mouseButton == LEFT){
-				println("Mouse clicked");
-				int cur_point = key_point.size() - 1;
-				int x_last = -1;
-				int x_max = (int)grid.x_max;
-				int x_this = (int)grid.x();						
-				if(cur_point > 0){							
-					x_last = (int)grid.x(key_point.get(key_point.size()-1).posX);
-				}
-				
-				if(x_this > x_last && x_this < x_max){
-					key_point.add(new Button(this));
-					Button this_point = key_point.get(key_point.size() - 1);
-					float posX = (int)grid.x() * grid.x_inc_px + grid.x_zero;
-					this_point.init("Test", posX, mouseY, 20);
-					this_point.label = Integer.toString(key_point.size());
-					this_point.draw();			
+		if(mousePressed == true){
+			if(mouseButton == LEFT){
+				if(send.overButton()){
+					println("Send clicked");
+					send.colorFill(20, 20, 20);
+					send.colorText(200, 200, 200);
+					send.draw();
+					state = SEND_DATA;
 				}
 			}
-			bounce.set();
+		}	
+		// Otherwise un-highlight all buttons
+		else{
+			send.colorFill(200, 200, 200);
+			send.colorText(0, 0, 0);
+			send.draw();
 		}
-		
-		bounce.set();
+			
 	}
 	
-	void modifyInput(){
-		
-		// Set state indicator
-		state_ind.label = "Modify Key Points";
-		state_ind.draw();
+	/** Input state functions **/
+	 
+	void getInput(){
 
-		if(mousePressed == false){
-			bounce.set();
+		// See if an existing key frame is being clicked
+		int cur_kf = overKF();
+
+		// If so, modify it
+		if(cur_kf > -1){
+			println("Modifying key frame");
+			modifyKF(cur_kf);
+		}
+		// Otherwise, add a new point
+		else if(cur_kf == -1 && bounce.get() == false){
+			println("Adding key frame");
+			addKF();
+		}
+	}
+	
+	int overKF(){
+		
+		// Mouse clicked
+		if(mousePressed == true){
+			// Check if any key frame point is already clicked
+			for(int i = 0; i < key_frame.size(); i++){
+				Button this_point = key_frame.get(i);
+				if(this_point.clicked == true){				
+					return i;
+				}
+			}
 			
-			// Set the click state for all buttons false
-			for(int i = 0; i < key_point.size(); i++){
-				Button this_point = key_point.get(i);
+			// If not, see if one is clicked now
+			for(int i = 0; i < key_frame.size(); i++){
+				Button this_point = key_frame.get(i);
+				if(this_point.overButton()){
+					this_point.clicked = true;
+					return i;
+				}
+			}		
+			
+			// If not, then somewhere other than an existing point is being clicked				
+			return -1;
+		}
+		// Mouse not clicked
+		else {
+			for(int i = 0; i < key_frame.size(); i++){
+				Button this_point = key_frame.get(i);
 				this_point.clicked = false;
 			}
+			bounce.set(false);
+			return -2;
+		}			
+	}
+	
+	void addKF(){
+				
+		// Only add key frames if they're being placed on the grid and don't exceed the max KF count
+		if(grid.overGrid() && key_frame.size() < MAX_KF){
+			key_frame.add(new Button(this));
+			Button this_point = key_frame.get(key_frame.size() - 1);
+			float posX = (int)grid.x() * grid.x_inc_px + grid.x_zero;			
+			this_point.init("temp", posX, mouseY, 20);
+			
+			// Re-order the points by position
+			Collections.sort(key_frame, new PointComparator());
+			
+			// Label and draw them
+			for(int i = 0; i < key_frame.size(); i++){
+				this_point = key_frame.get(i);
+				this_point.label = Integer.toString(i);
+			}
+			this_point.draw();			
+		}		
+	}
+	
+	void modifyKF(int p_kf){		
+		
+		// For a left click, cycle through the key frame points
+		if(mouseButton == LEFT){
+			
+			Button this_point = key_frame.get(p_kf);	
+			
+
+			int x_last = -1;
+			int x_next = (int)grid.x_max;
+			int x_this = (int)grid.x();						
+			if(p_kf > 0){							
+				x_last = (int)grid.x(key_frame.get(p_kf - 1).posX);
+			}
+			if(p_kf < key_frame.size() - 1)
+				x_next = (int)grid.x(key_frame.get(p_kf + 1).posX);
+			
+			if(x_this > x_last && x_this < x_next){
+				// Set the X position where a key frame would fall, not at the exact mouse position
+				this_point.posX = x_this * grid.x_inc_px + grid.x_zero;
+			}
+			if(grid.overGridY()){
+				this_point.posY = mouseY;		
+			}		
+		}
+		else if(mouseButton == RIGHT){
+			key_frame.remove(p_kf);
 		}
 		
-		else if(mousePressed == true){
+		// Redraw the grid and buttons
+		grid.draw();
+		updateMousePos();
+		for(int i = 0; i < key_frame.size(); i++){
+			Button this_point = key_frame.get(i);
+			this_point.label = Integer.toString(i + 1);
+			this_point.draw();					
+		}	
 
-			// Right click to modifying points
-			if(bounce.get() == false && mouseButton == RIGHT){
-				state++;
-				print("Done modifying key frames");
-				bounce.set();
-			}
-			
-			// Left click to add point
-			else if(mouseButton == LEFT){
-				
-				boolean clicked = false;
-				
-				// Cycle through the key frame points				
-				for(int i = 0; i < key_point.size(); i++){
-					Button this_point = key_point.get(i);	
-					
-					// See if a button has already been clicked
-					if(this_point.clicked){
-						int x_last = -1;
-						int x_next = (int)grid.x_max;
-						int x_this = (int)grid.x();						
-						if(i > 0){							
-							x_last = (int)grid.x(key_point.get(i-1).posX);
-						}
-						if(i < key_point.size() - 1)
-							x_next = (int)grid.x(key_point.get(i+1).posX);
-						
-						if(x_this > x_last && x_this < x_next){
-							// Set the X position where a key frame would fall, not at the exact mouse position
-							this_point.posX = x_this * grid.x_inc_px + grid.x_zero;
-						}
-						if(grid.y() >= 0 && grid.y() <= 360){
-							this_point.posY = mouseY;		
-						}
-						clicked = true;
-						break;
-					}
-				}
-				
-				// If no button was already clicked, see if one is clicked now
-				if(!clicked){					
-					for(int i = 0; i < key_point.size(); i++){
-						Button this_point = key_point.get(i);										
-						if(this_point.overButton()){
-							println("Clicked a point");
-							this_point.clicked = true;
-						}
-					}		
-				}
-				
-				// Redraw the grid and buttons
-				grid.draw();
-				updateMousePos();
-				for(int i = 0; i < key_point.size(); i++){
-					Button this_point = key_point.get(i);
-					this_point.draw();					
-				}	
-			} // done with left click action
-		}
+	
 		bounce.set();
 	}
 	
-
+	
+	/** Send state functions **/
+	
+	void sendData(){
+		
+	}
+	
+	/** Helper functions **/
+	
 	void updateMousePos() {		
 		graph_loc.draw(String.format("%.0f", grid.x()), String.format("%.1f", grid.y()));
 		mouse_loc.draw(Integer.toString(mouseX), Integer.toString(mouseY));

@@ -89,14 +89,14 @@ public class Grid {
 	}
 	
 	// Returns x graph value of arbitrary input
-	float x(float p_input){
+	float x(float _input){
 		
-		if(p_input > x_max_px)
+		if(_input > x_max_px)
 			return x_max;
-		else if(p_input < x_min_px)
+		else if(_input < x_min_px)
 			return x_min;
 		else
-			return (p_input - x_zero) / x_inc_px;
+			return (_input - x_zero) / x_inc_px;
 	}
 	
 	
@@ -106,14 +106,39 @@ public class Grid {
 	}
 	
 	// Returns y graph value of arbitrary input
-	float y(float p_input){
-		if(p_input > y_max_px)
+	float y(float _input){
+		if(_input > y_max_px)
 			return y_min;
-		else if(p_input < y_min_px)
+		else if(_input < y_min_px)
 			return y_max;
 		else
-			return -(p_input - y_zero) / y_inc_px;
+			return -(_input - y_zero) / y_inc_px;
 	}
+	
+	boolean overGrid(){
+		
+		if(overGridX() && overGridY())
+			return true;
+		else
+			return false;
+	}
+	
+	boolean overGridX(){
+		
+		if(p.mouseX >= x_zero && p.mouseX <= x_max_px)
+			return true;
+		else
+			return false;		
+	}
+	
+	boolean overGridY(){
+		
+		if(p.mouseY >= y_min_px && p.mouseY <= y_zero)
+			return true;
+		else
+			return false;		
+	}
+	
 	
 	void draw() {
 		

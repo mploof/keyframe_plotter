@@ -61,13 +61,13 @@ public class Indicator {
 	}
 	
 	// Initialize indicator
-	void init(String p_label_0, String p_label_1, float p_posX, float p_posY, float p_width, float p_height){	
-		height = p_height;
-		width = p_width;			
-		label_0 = p_label_0.concat(": ");
-		label_1 = p_label_1.concat(": ");
-		posX = p_posX;
-		posY = p_posY;	
+	void init(String _label_0, String _label_1, float _posX, float _posY, float _width, float _height){	
+		height = _height;
+		width = _width;			
+		label_0 = _label_0.concat(": ");
+		label_1 = _label_1.concat(": ");
+		posX = _posX;
+		posY = _posY;	
 		
 		x_min_px = posX - width/2;
 		x_max_px = posX + width/2;
@@ -77,7 +77,7 @@ public class Indicator {
 
 		
 	// Draw the indicator, labels, and values
-	void draw(String p_value_0, String p_value_1){
+	void draw(String _value_0, String _value_1){
 		
 		// Set drawing parameters
 		p.stroke(0);
@@ -96,11 +96,11 @@ public class Indicator {
 		p.textSize(text_size);
 		p.textAlign(PConstants.LEFT, PConstants.CENTER);
 		int text_margin = 5;
-		if(p_value_1 != "NULL"){
-		    p.text(label_0.concat(p_value_0), posX - width/2 + text_margin, posY - height/4);
-		    p.text(label_1.concat(p_value_1), posX - width/2 + text_margin, posY + height/4);
+		if(_value_1 != "NULL"){
+		    p.text(label_0.concat(_value_0), posX - width/2 + text_margin, posY - height/4);
+		    p.text(label_1.concat(_value_1), posX - width/2 + text_margin, posY + height/4);
 		}
 		else
-			p.text(label_0.concat(p_value_0), posX, posY);        
+			p.text(label_0.concat(_value_0), posX, posY);        
 	}
 }

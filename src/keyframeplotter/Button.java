@@ -65,33 +65,45 @@ public class Button {
 	}
 	
 	// Initialize rectangular button
-	void init(String p_text, float p_posX, float p_posY, float p_width, float p_height){	
-		height = p_height;
-		width = p_width;
+	void init(String _text, float _posX, float _posY, float _width, float _height){	
+		height = _height;
+		width = _width;
 		radius = 0;
-		init(p_text, p_posX, p_posY);		
+		init(_text, _posX, _posY);		
 	}
 	
 	// Initialize circular button
-	void init(String p_text, float p_posX, float p_posY, float p_radius){	
+	void init(String _text, float _posX, float _posY, float _radius){	
 		PApplet.println("Initializing circle");
 		height = 0;
 		width = 0;
-		radius = p_radius;
-		init(p_text, p_posX, p_posY);		
+		radius = _radius;
+		init(_text, _posX, _posY);		
 	}
 	
 	// Initialize the button with fewer settings
-	private void init(String p_text, float p_posX, float p_posY){		
-		label = p_text;
-		posX = p_posX;
-		posY = p_posY;		
+	private void init(String _text, float _posX, float _posY){		
+		label = _text;
+		posX = _posX;
+		posY = _posY;		
 		clicked = false;
 		
 		x_min_px = posX - width/2;
 		x_max_px = posX + width/2;
 		y_min_px = posY - height/2;
 		y_max_px = posY + height/2;
+	}
+	
+	void colorFill(int _r, int _g, int _b){
+		r_b = _r;
+		g_b = _g;
+		b_b = _b;
+	}
+	
+	void colorText(int _r, int _g, int _b){
+		r_t = _r;
+		g_t = _g;
+		b_t = _b;
 	}
 	
 	// Draw the button and label
@@ -121,7 +133,7 @@ public class Button {
 		p.textAlign(PConstants.CENTER, PConstants.CENTER);
         p.text(label, posX, posY);
         
-	}	
+	}
 	
 
 	// Determine whether the mouse is over the button
