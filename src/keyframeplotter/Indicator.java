@@ -20,7 +20,7 @@ public class Indicator {
 	float height, width, posX, posY, x_max_px, x_min_px, y_max_px, y_min_px, margin;							
 	int		weight, r_b, g_b, b_b;	
 	String label_0, label_1, value_0, value_1;	// Button label text
-	int text_size, r_t, g_t, b_t;				// Label parameters
+	int text_size, text_margin, r_t, g_t, b_t, alignment;	// Label parameters
 	boolean clicked;
 	
 	
@@ -53,6 +53,8 @@ public class Indicator {
 		r_t = 0;
 		g_t = 0;
 		b_t = 0;
+		text_margin = 5;
+		alignment = PConstants.CENTER;
 		
 	}
 	
@@ -74,10 +76,8 @@ public class Indicator {
 		y_min_px = posY - height/2;
 		y_max_px = posY + height/2;
 	}
-
-		
-	// Draw the indicator, labels, and values
-	void draw(String _value_0, String _value_1){
+	
+	private void prepDraw(){
 		
 		// Set drawing parameters
 		p.stroke(0);
@@ -89,18 +89,26 @@ public class Indicator {
         float rectY = posY - (height / 2);
         
         // Draw button	        
-        p.rect(rectX, rectY, width, height);		
+        p.rect(rectX, rectY, width, height);
         
-        // Draw label
+        // Set text parameters
         p.fill(r_t, g_t, b_t);
 		p.textSize(text_size);
-		p.textAlign(PConstants.LEFT, PConstants.CENTER);
-		int text_margin = 5;
-		if(_value_1 != "NULL"){
-		    p.text(label_0.concat(_value_0), posX - width/2 + text_margin, posY - height/4);
-		    p.text(label_1.concat(_value_1), posX - width/2 + text_margin, posY + height/4);
-		}
-		else
-			p.text(label_0.concat(_value_0), posX, posY);        
+		p.textAlign(PConstants.LEFT, PConstants.CENTER);		
+	}
+
+	// Draw single line indicator
+	void draw(String _value_0){
+		prepDraw();
+		p.text(label_0.concat(_value_0), posX - width/2 + text_margin, posY);        
+	}
+
+		
+	// Draw two line indicator
+	void draw(String _value_0, String _value_1){
+		
+		prepDraw();
+		p.text(label_0.concat(_value_0), posX - width/2 + text_margin, posY - height/4);
+		p.text(label_1.concat(_value_1), posX - width/2 + text_margin, posY + height/4);
 	}
 }

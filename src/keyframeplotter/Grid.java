@@ -17,7 +17,7 @@ public class Grid {
 	
 	// Class variables
 	float
-	top_margin, bottom_margin, left_margin, right_margin,
+	top_margin, bottom_margin, left_margin, right_margin, x_center, y_center,
 	x_max_px, x_min_px, y_max_px, y_min_px, height, width,
 	x_max, x_min, x_inc, x_range, x_inc_px, x_zero, vert_lines, 
 	y_max, y_min, y_inc, y_range, y_inc_px, y_zero, horiz_lines;
@@ -54,6 +54,8 @@ public class Grid {
 		x_min_px = left_margin;
 		y_max_px = p.height - bottom_margin;
 		y_min_px = top_margin;
+		x_center = (x_max_px + x_min_px) / 2;
+		y_center = (y_max_px + y_min_px) / 2;
 		height = y_max_px - y_min_px;
 		width = x_max_px - x_min_px;
 		
