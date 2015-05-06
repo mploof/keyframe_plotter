@@ -19,8 +19,8 @@ public class Grid {
 	float
 	top_margin, bottom_margin, left_margin, right_margin, x_center, y_center,
 	x_max_px, x_min_px, y_max_px, y_min_px, height, width,
-	x_max, x_min, x_inc, x_range, x_inc_px, x_zero, vert_lines, 
-	y_max, y_min, y_inc, y_range, y_inc_px, y_zero, horiz_lines;
+	x_max, x_min, x_inc, x_range, x_unit_px, x_zero_px, vert_lines, 
+	y_max, y_min, y_inc, y_range, y_unit_px, y_zero_px, horiz_lines;
 	 
 	
 	/*************************************
@@ -70,16 +70,16 @@ public class Grid {
 		x_inc = _x_inc;							// x increment size in graph units
 		y_inc = _y_inc;							// y increment size in graph units
 		
-		x_inc_px = width / (x_max - x_min);		// Width in pixels of each x increment
-		y_inc_px = height / (y_max - y_min);	// Height in pixels of each y increment
+		x_unit_px = width / (x_max - x_min);		// Width in pixels of each x increment
+		y_unit_px = height / (y_max - y_min);	// Height in pixels of each y increment
 		
 		vert_lines = (x_max - x_min) / x_inc;
 		horiz_lines = (y_max - y_min) / y_inc;
 		
 		
 		
-		x_zero = (-x_min) / x_inc * (width / vert_lines) + x_min_px;
-	    y_zero = (height - ((-y_min) / y_inc * (height / horiz_lines))) + y_min_px;
+		x_zero_px = (-x_min) / x_inc * (width / vert_lines) + x_min_px;
+	    y_zero_px = (height - ((-y_min) / y_inc * (height / horiz_lines))) + y_min_px;
 		
 	    
 	    
@@ -98,7 +98,7 @@ public class Grid {
 		else if(_input < x_min_px)
 			return x_min;
 		else
-			return (_input - x_zero) / x_inc_px;
+			return (_input - x_zero_px) / x_unit_px;
 	}
 	
 	
@@ -114,9 +114,35 @@ public class Grid {
 		else if(_input < y_min_px)
 			return y_max;
 		else
-			return -(_input - y_zero) / y_inc_px;
+			return -(_input - y_zero_px) / y_unit_px;
 	}
 	
+	// Returns x px value of a graph location
+	float x_px(float _input){
+		
+		float ret = _input * x_unit_px + x_zero_px;
+		
+		if(ret > x_max_px)
+			return x_max_px;
+		else if(ret < x_min_px)
+			return x_min_px;
+		else
+			return ret;
+	}
+	
+	// Returns y px value of a graph location
+	float y_px(float _input){
+		
+		float ret = y_zero_px - (_input * y_unit_px);
+		
+		if(ret > y_max_px)
+			return y_max_px;
+		else if(ret < y_min_px)
+			return y_min_px;
+		else
+			return ret;
+	}
+		
 	boolean overGrid(){
 		
 		if(overGridX() && overGridY())
@@ -127,7 +153,7 @@ public class Grid {
 	
 	boolean overGridX(){
 		
-		if(p.mouseX >= x_zero && p.mouseX <= x_max_px)
+		if(p.mouseX >= x_zero_px && p.mouseX <= x_max_px)
 			return true;
 		else
 			return false;		
@@ -135,7 +161,7 @@ public class Grid {
 	
 	boolean overGridY(){
 		
-		if(p.mouseY >= y_min_px && p.mouseY <= y_zero)
+		if(p.mouseY >= y_min_px && p.mouseY <= y_zero_px)
 			return true;
 		else
 			return false;		
@@ -171,10 +197,10 @@ public class Grid {
 
 	   
 	       	// Don't draw the lines if they're off the screen
-	    if(x_zero >= 0)
-	    	p.line(x_zero, y_min_px, x_zero, y_max_px);
-	    if(y_zero >= 0)
-	    	p.line(x_min_px, y_zero, x_max_px, y_zero);
+	    if(x_zero_px >= 0)
+	    	p.line(x_zero_px, y_min_px, x_zero_px, y_max_px);
+	    if(y_zero_px >= 0)
+	    	p.line(x_min_px, y_zero_px, x_max_px, y_zero_px);
 	
 		// Draw the numbers
 		PFont f;
@@ -188,14 +214,14 @@ public class Grid {
 			// Don't print values less than 0 or values that are out of the graph boundary
 			float location = ((width / vert_lines) * i + 5) + x_min_px;
 			if((int)((i * x_inc) + x_min) >=0 && location > x_min_px && location < x_max_px )
-				p.text((int)((i * x_inc) + x_min), location, y_zero);     
+				p.text((int)((i * x_inc) + x_min), location, y_zero_px);     
 		}		
 		// Y Scale
 		p.textAlign(PConstants.RIGHT);
 		for(byte i = 0; i < horiz_lines; i++){
 			float location = ((height / horiz_lines) * i - 5) + y_min_px;
 			if(location > y_min_px && location < y_max_px)
-				p.text((int)(y_max - (i * y_inc)), x_zero - 5, location);			          
+				p.text((int)(y_max - (i * y_inc)), x_zero_px - 5, location);			          
 		}
 	}
 }

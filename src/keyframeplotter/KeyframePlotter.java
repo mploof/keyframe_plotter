@@ -175,7 +175,7 @@ public class KeyframePlotter extends PApplet {
 		if(grid.overGrid() && key_frames.size() < MAX_KF){
 			key_frames.add(new Button(this));
 			Button this_point = key_frames.get(key_frames.size() - 1);
-			float posX = (int)grid.x() * grid.x_inc_px + grid.x_zero;			
+			float posX = (int)grid.x() * grid.x_unit_px + grid.x_zero_px;			
 			this_point.init("temp", posX, mouseY, 20);
 			
 			// Re-order the points by position
@@ -212,7 +212,7 @@ public class KeyframePlotter extends PApplet {
 			
 			if(x_this > x_last && x_this < x_next){
 				// Set the X position where a key frame would fall, not at the exact mouse position
-				this_point.posX = x_this * grid.x_inc_px + grid.x_zero;
+				this_point.posX = x_this * grid.x_unit_px + grid.x_zero_px;
 			}
 			if(grid.overGridY()){
 				this_point.posY = mouseY;		
@@ -245,73 +245,183 @@ public class KeyframePlotter extends PApplet {
 			return;
 		
 		final int SEND = 1;
+		final int XY_SIZE = 2;
+		final int FLOAT_BYTES = 4;
+		int response_check;
 		
-		// Send packet to indicate incoming points
+		// Send code to indicate incoming points
 		port.write(SEND);
 		
+		// Quit sending if an error is received
+		response_check = responseListener();
+		if(response_check == -1)			
+			return;
+		else if(response_check == 0){
+			println("Controller-side error");
+			return;			
+		}
+		else
+			println("Command accepted");
+		
+		
+		// Send number of incoming points
+		print("Point count: ");
+		println(key_frames.size());
+		port.write(key_frames.size());
+		
+		response_check = responseListener();
+		if(response_check == -1)			
+			return;
+		else if(response_check == 0){
+			println("Controller-side error");
+			return;			
+		}
+		else
+			println("Point count accepted");
+		
+		
+		// Loop
+		for(int i = 0; i < key_frames.size(); i++){
+			for(int j = 0; j < XY_SIZE; j++){
+				
+				// Find position of current point
+				float temp_val;
+				if(j == 0)
+					temp_val = grid.x(key_frames.get(i).posX);
+				else
+					temp_val = grid.y(key_frames.get(i).posY);
+				//temp_val = (float)5616.55;
+				print("Temp val: ");
+				println(temp_val);
+				
+				// Convert to intBits
+				int out_val = Float.floatToIntBits(temp_val);				
+				print("out_val: ");
+				println(out_val);
+			
+				// Break float into bytes and send			
+				for(int k = 0; k < FLOAT_BYTES; k++){				
+					byte out_byte= (byte) ((out_val >> (8 * k)) & 0xFF);
+					port.write(out_byte);
+					print("out_byte: ");
+					println(out_byte);
+				}
+				
+				// Wait for response and bail if we timeout
+				response_check = responseListener();
+				if(response_check == -1){					
+					return;
+				}
+				else if(response_check == -5000){
+					println("Error reading value");
+					port.clear();
+					return;
+				}				
+				else
+					println("Value accepted");				
+			}
+		}
+		
+		// Wait for spline calculations to finish
+		response_check = responseListener();
+		if(response_check == -1)			
+			return;
+		else if(response_check == 0){
+			println("Controller-side error");
+			return;			
+		}
+		else
+			println("Spline calculations completed");
+	
+		
+		// Request spline information
+		getPoints(5, 255, 0, 0);
+		
+	}
+	
+	void getPoints(int p_size, int p_r, int p_g, int p_b){
+		  println("Getting points");
+		  println("delay");
+		  delay(500);
+		  		 
+		  println("Entering point retrieval loop");		  
+		  int i = 0;
+		  float cur_x = -1000;
+		  float cur_y = -1000;
+		  int point_count = 10;
+		  
+		  while(true){
+		    delay(10);		    
+		    if(port.available() > 0){
+		      // get the ASCII string:
+		       String inString = port.readStringUntil('\n');
+		       print("inString: ");
+		       println(inString);
+		       
+		       if (inString != null) {		       	  	   
+		    	 
+		         // trim off any whitespace:
+		         inString = trim(inString);
+		         float inFloat = -1;
+		         try{
+		         // convert to an int and map to the screen height:
+		        	 inFloat = Float.parseFloat(inString);
+		         }
+		         catch(NumberFormatException e){
+		        	 println("Oh teh noze!");
+		         }
+		        
+		        if(inFloat > 5000){
+		           println("reached stop code");		           
+		           return;
+		         }
+		         
+		        if(i%2 == 0)
+		        	cur_x = grid.x_px(inFloat);
+		        else
+		        	cur_y = grid.y_px(inFloat);       
+		       
+		           
+		         // If both of the coordinates have now been set, draw the point:
+		         if(cur_x != -1000 && cur_y != -1000){
+		           // draw the point:
+		           strokeWeight(p_size);
+		           stroke(p_r, p_g, p_b);
+		           point(cur_x, cur_y);
+		           // reset the point vars:
+		           cur_x = -1000;
+		           cur_y = -1000;		         
+		         }
+		         i++;
+		         if(i == point_count * 2){
+		        	 break;
+		         }
+		       }		       
+		    }  
+		  }
+		}
+	
+	int responseListener(){
 		long time = millis();
-		final int TIMEOUT = 5000;
+		final int TIMEOUT = 4000;
 		// Wait for response
 		while(true){
 			delay(10);
 			if(port.available() > 0){
 				float response = readPort();
-				print("Response from controller: ");
-				println(response);
-				message.draw("Response OK!");
-				if(response == 1)
-					break;				
+				// The response was a null string, keep trying
+				if(response != -5000){
+					print("Response:");
+					println(response);
+					return (int)response;
+				}
 			}
 			if(millis() - time > TIMEOUT){
 				println("Sending timed out");
 				message.draw("Sending timed out, try again");
-				return;
+				return -1;
 			}
 		}
-		
-		// Loop
-		for(int i = 0; i < key_frames.size(); i++){
-			float temp_val = grid.x(key_frames.get(i).posX);
-			byte[] out_bytes = ByteBuffer.allocate(4).putFloat(temp_val).array();					
-			float f = ByteBuffer.wrap(out_bytes).getFloat();
-			
-			print("Reverse conversion: ");
-			println(f);
-			print("iToHex");
-			println(iToHex(25));
-			
-			port.write(iToHex(25));
-			while(true){
-				delay(10);
-				if(port.available() > 0){
-					float response = readPort();
-					// Ignore null string errors
-					if(response != -5000){
-						print("Echo: ");
-						println(response);					
-						break;
-					}
-				}
-			}
-			
-			
-		}
-			// Send point
-			// Wait for response		
-		
-		// Request spline information
-		state = GET_INPUT;
-		
-	}
-	
-	String iToHex(int n) {
-	    // call toUpperCase() if that's required
-	    return String.format("0x%8s", Integer.toHexString(n)).replace(' ', '0');
-	}
-	
-	String hex(float f) {
-	    // change the float to raw integer bits(according to the OP's requirement)
-	    return hex(Float.floatToRawIntBits(f));
 	}
 	
 	float readPort(){		
