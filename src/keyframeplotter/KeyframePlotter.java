@@ -35,6 +35,7 @@ public class KeyframePlotter extends PApplet {
 	
 	float x = -1000;   										// x coordinate points retrieved from MCU
 	float y = -1000;										// y coordinate points retrieved from MCU
+	int spline_pnt_count = 60;
 	
 	int command = 0;
 	
@@ -240,13 +241,81 @@ public class KeyframePlotter extends PApplet {
 	
 	void sendData(){
 		
+		// Send test packet
+		NMXCommand(0, 5);
+		
+	}
+	
+	void NMXCommand(int _sub_addr, int _command){
+		NMXCommand(_sub_addr, _command, 0, 0);	
+	}
+	
+	void NMXCommand(int _sub_addr, int _command, int _length, int _data){
+		
+		// Assemble command packet
+		String header = "0000000000FF";
+		String address = "03";		
+		String sub_addr = _sub_addr <= 15 ? "0" + Integer.toHexString(_sub_addr) : Integer.toHexString(_sub_addr);
+		String command = _command <= 15 ? "0" + Integer.toHexString(_command) : Integer.toHexString(_command);
+		String length = _length <= 15 ? "0" + Integer.toHexString(_length) : Integer.toHexString(_length);
+		String data = Integer.toHexString(_data);
+		String packet = header + address + sub_addr + command + length;
+		if(_length != 0)
+			packet += data;		
+		
+		// Convert hex string to byte array
+		byte[] out_command = hexStringToByteArray(packet);
+		
+		// Send command
+		for(int i = 0; i < out_command.length; i++){		
+			port.write(out_command[i]);
+		}
+		
+		// Wait for response
+		final int TIMEOUT = 3000;
+		long time = millis();
+		while(true){
+			// Wait for response packet to show up in buffer
+			delay(10);			
+			if(port.available() > 0){
+				print("NMX response: ");		
+				int size = port.available();
+				int[] in_byte = new int[size];
+				for(int i = 0; i < in_byte.length; i++){
+					in_byte[i] = port.read();
+					String debug = in_byte[i] <= 15 ? "0" + Integer.toHexString(in_byte[i]) : Integer.toHexString(in_byte[i]); 
+					print(debug);
+					print(" ");
+				}
+				println("");
+				break;
+			}						
+			// Eventually bail if it never shows up
+			if(millis() - time > TIMEOUT){
+				println("Timed out waiting for NMX response packet");
+				break;
+			}			
+		}	
+	}
+	
+	static byte[] hexStringToByteArray(String s){
+		int len = s.length();
+		byte[] data = new byte[len/2];
+		for(int i = 0; i < len; i += 2){
+			data[i/2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i+1), 16));
+		}
+		return data;
+	}
+	
+	void sendData_(){
+		
 		// Make sure this function isn't called a bunch of times in a row
 		if(bounce.get() == true)
 			return;
 		
 		final int SEND = 1;
 		final int XY_SIZE = 2;
-		final int FLOAT_BYTES = 4;
+		final int FLOAT_BYTES = 4;		
 		int response_check;
 		
 		// Send code to indicate incoming points
@@ -265,9 +334,24 @@ public class KeyframePlotter extends PApplet {
 		
 		
 		// Send number of incoming points
-		print("Point count: ");
+		print("Key frame count: ");
 		println(key_frames.size());
 		port.write(key_frames.size());
+		
+		response_check = responseListener();
+		if(response_check == -1)			
+			return;
+		else if(response_check == 0){
+			println("Controller-side error");
+			return;			
+		}
+		else
+			println("Key frame count accepted");
+		
+		// Send number of spline points to calculate
+		print("Spline point count: ");
+		println(spline_pnt_count);
+		port.write(spline_pnt_count);
 		
 		response_check = responseListener();
 		if(response_check == -1)			
@@ -290,21 +374,17 @@ public class KeyframePlotter extends PApplet {
 					temp_val = grid.x(key_frames.get(i).posX);
 				else
 					temp_val = grid.y(key_frames.get(i).posY);
-				//temp_val = (float)5616.55;
-				print("Temp val: ");
+				
+				print("Send value: ");
 				println(temp_val);
 				
 				// Convert to intBits
 				int out_val = Float.floatToIntBits(temp_val);				
-				print("out_val: ");
-				println(out_val);
-			
+							
 				// Break float into bytes and send			
 				for(int k = 0; k < FLOAT_BYTES; k++){				
 					byte out_byte= (byte) ((out_val >> (8 * k)) & 0xFF);
 					port.write(out_byte);
-					print("out_byte: ");
-					println(out_byte);
 				}
 				
 				// Wait for response and bail if we timeout
@@ -317,8 +397,10 @@ public class KeyframePlotter extends PApplet {
 					port.clear();
 					return;
 				}				
-				else
-					println("Value accepted");				
+				else{					
+					print("Value accepted: ");
+					println(response_check);
+				}
 			}
 		}
 		
@@ -347,39 +429,18 @@ public class KeyframePlotter extends PApplet {
 		  println("Entering point retrieval loop");		  
 		  int i = 0;
 		  float cur_x = -1000;
-		  float cur_y = -1000;
-		  int point_count = 10;
+		  float cur_y = -1000;		  
 		  
 		  while(true){
 		    delay(10);		    
 		    if(port.available() > 0){
-		      // get the ASCII string:
-		       String inString = port.readStringUntil('\n');
-		       print("inString: ");
-		       println(inString);
-		       
-		       if (inString != null) {		       	  	   
-		    	 
-		         // trim off any whitespace:
-		         inString = trim(inString);
-		         float inFloat = -1;
-		         try{
-		         // convert to an int and map to the screen height:
-		        	 inFloat = Float.parseFloat(inString);
-		         }
-		         catch(NumberFormatException e){
-		        	 println("Oh teh noze!");
-		         }
-		        
-		        if(inFloat > 5000){
-		           println("reached stop code");		           
-		           return;
-		         }
+		    	
+		    	float in_float = readPort();		    
 		         
 		        if(i%2 == 0)
-		        	cur_x = grid.x_px(inFloat);
+		        	cur_x = grid.x_px(in_float);
 		        else
-		        	cur_y = grid.y_px(inFloat);       
+		        	cur_y = grid.y_px(in_float);       
 		       
 		           
 		         // If both of the coordinates have now been set, draw the point:
@@ -393,10 +454,10 @@ public class KeyframePlotter extends PApplet {
 		           cur_y = -1000;		         
 		         }
 		         i++;
-		         if(i == point_count * 2){
+		         if(i == spline_pnt_count * 2){
 		        	 break;
 		         }
-		       }		       
+		       		       
 		    }  
 		  }
 		}
@@ -417,7 +478,7 @@ public class KeyframePlotter extends PApplet {
 				}
 			}
 			if(millis() - time > TIMEOUT){
-				println("Sending timed out");
+				println("Response timed out");
 				message.draw("Sending timed out, try again");
 				return -1;
 			}
@@ -428,7 +489,15 @@ public class KeyframePlotter extends PApplet {
 		String in_string = port.readStringUntil('\n');
 		if(in_string != null){
 			in_string = trim(in_string);
-			return Float.parseFloat(in_string);
+			try{
+				//print("Read string: ");
+				//println(in_string);
+				return Float.parseFloat(in_string);
+			}
+			catch(NumberFormatException e){				
+				println("Oops! Tried to parse a non-float string!");
+				println(in_string);
+			}
 		}
 		return -5000;
 	}	
