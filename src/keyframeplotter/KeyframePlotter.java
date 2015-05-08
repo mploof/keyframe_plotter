@@ -241,9 +241,59 @@ public class KeyframePlotter extends PApplet {
 	
 	void sendData(){
 		
-		// Send test packet
-		NMXCommand(0, 5);
+		final int BYTE_SIZE = 1;	// Size of a single byte
+		final int INT_SIZE = 2;		// Size of an integer
+		final int FLOAT_SIZE = 4;	// Size of a floating point number
+		final int XY_SIZE = 2;		// Represents the two values necessary for an XY location
+		final int FLUSH_COUNT = 0;	// Number of times to spam the controller before sending real info 
 		
+		// Flush the NMX
+		println("Sending clearing commands to NMX");
+		for(int i = 0; i < FLUSH_COUNT; i++)
+			NMXCommand(5, 100);
+		
+		// Send key frame count / indicate start of transmission
+		println("Sending key frame count");
+		NMXCommand(5, 10, INT_SIZE, key_frames.size());
+		
+		
+		// Verify the frame count
+		println("Verifying key frame count");
+		NMXCommand(5, 100);
+		
+		// **** Send key frame points*** //		
+		
+		// Loop through each key frame point
+		println("Sending key frame point locations");
+		for(int i = 0; i < key_frames.size(); i++){
+			for(int j = 0; j < XY_SIZE; j++){
+				
+				// Find position of current point
+				float temp_val;
+				if(j == 0)
+					temp_val = grid.x(key_frames.get(i).posX);
+				else
+					temp_val = grid.y(key_frames.get(i).posY);
+				
+				print("Send value: ");
+				println(temp_val);
+				
+				// Convert to intBits
+				int out_val = Float.floatToIntBits(temp_val);				
+				
+				// Send data packet
+				NMXCommand(5, 11, FLOAT_SIZE, out_val);								
+			}
+		}
+		
+		// End the transmission
+		println("Ending key frame point transmission");
+		NMXCommand(5, 10, INT_SIZE, 0);
+		
+		// Check point count again
+		println("Double checking point count");
+		NMXCommand(5, 100);
+				
 	}
 	
 	void NMXCommand(int _sub_addr, int _command){
@@ -258,10 +308,24 @@ public class KeyframePlotter extends PApplet {
 		String sub_addr = _sub_addr <= 15 ? "0" + Integer.toHexString(_sub_addr) : Integer.toHexString(_sub_addr);
 		String command = _command <= 15 ? "0" + Integer.toHexString(_command) : Integer.toHexString(_command);
 		String length = _length <= 15 ? "0" + Integer.toHexString(_length) : Integer.toHexString(_length);
-		String data = Integer.toHexString(_data);
-		String packet = header + address + sub_addr + command + length;
-		if(_length != 0)
-			packet += data;		
+		String data = Integer.toHexString(_data).length()%2 != 0 ? "0" + Integer.toHexString(_data) : Integer.toHexString(_data);
+		String packet = header + address + sub_addr + command + length;			
+
+		// If the length is non-zero, then append the data
+		if(_length != 0){
+			// Make sure the data has any necessary leading zeros
+			if(data.length() / 2 != _length){
+				int leading_zero_byes = _length - (data.length()/2);
+				for(int i = 0; i < leading_zero_byes; i++){
+					data = "00" + data;
+				}
+			}
+			// Append to the packet
+			packet += data;
+		}		
+
+		//print("Assembled packet: ");
+		//println(packet);
 		
 		// Convert hex string to byte array
 		byte[] out_command = hexStringToByteArray(packet);
@@ -307,121 +371,10 @@ public class KeyframePlotter extends PApplet {
 		return data;
 	}
 	
-	void sendData_(){
-		
-		// Make sure this function isn't called a bunch of times in a row
-		if(bounce.get() == true)
-			return;
-		
-		final int SEND = 1;
-		final int XY_SIZE = 2;
-		final int FLOAT_BYTES = 4;		
-		int response_check;
-		
-		// Send code to indicate incoming points
-		port.write(SEND);
-		
-		// Quit sending if an error is received
-		response_check = responseListener();
-		if(response_check == -1)			
-			return;
-		else if(response_check == 0){
-			println("Controller-side error");
-			return;			
-		}
-		else
-			println("Command accepted");
-		
-		
-		// Send number of incoming points
-		print("Key frame count: ");
-		println(key_frames.size());
-		port.write(key_frames.size());
-		
-		response_check = responseListener();
-		if(response_check == -1)			
-			return;
-		else if(response_check == 0){
-			println("Controller-side error");
-			return;			
-		}
-		else
-			println("Key frame count accepted");
-		
-		// Send number of spline points to calculate
-		print("Spline point count: ");
-		println(spline_pnt_count);
-		port.write(spline_pnt_count);
-		
-		response_check = responseListener();
-		if(response_check == -1)			
-			return;
-		else if(response_check == 0){
-			println("Controller-side error");
-			return;			
-		}
-		else
-			println("Point count accepted");
-		
-		
-		// Loop
-		for(int i = 0; i < key_frames.size(); i++){
-			for(int j = 0; j < XY_SIZE; j++){
-				
-				// Find position of current point
-				float temp_val;
-				if(j == 0)
-					temp_val = grid.x(key_frames.get(i).posX);
-				else
-					temp_val = grid.y(key_frames.get(i).posY);
-				
-				print("Send value: ");
-				println(temp_val);
-				
-				// Convert to intBits
-				int out_val = Float.floatToIntBits(temp_val);				
-							
-				// Break float into bytes and send			
-				for(int k = 0; k < FLOAT_BYTES; k++){				
-					byte out_byte= (byte) ((out_val >> (8 * k)) & 0xFF);
-					port.write(out_byte);
-				}
-				
-				// Wait for response and bail if we timeout
-				response_check = responseListener();
-				if(response_check == -1){					
-					return;
-				}
-				else if(response_check == -5000){
-					println("Error reading value");
-					port.clear();
-					return;
-				}				
-				else{					
-					print("Value accepted: ");
-					println(response_check);
-				}
-			}
-		}
-		
-		// Wait for spline calculations to finish
-		response_check = responseListener();
-		if(response_check == -1)			
-			return;
-		else if(response_check == 0){
-			println("Controller-side error");
-			return;			
-		}
-		else
-			println("Spline calculations completed");
 	
-		
-		// Request spline information
-		getPoints(5, 255, 0, 0);
-		
-	}
+	/** Draw state functions **/
 	
-	void getPoints(int p_size, int p_r, int p_g, int p_b){
+	void drawSplinePoints(int p_size, int p_r, int p_g, int p_b){
 		  println("Getting points");
 		  println("delay");
 		  delay(500);
@@ -460,47 +413,9 @@ public class KeyframePlotter extends PApplet {
 		       		       
 		    }  
 		  }
-		}
-	
-	int responseListener(){
-		long time = millis();
-		final int TIMEOUT = 4000;
-		// Wait for response
-		while(true){
-			delay(10);
-			if(port.available() > 0){
-				float response = readPort();
-				// The response was a null string, keep trying
-				if(response != -5000){
-					print("Response:");
-					println(response);
-					return (int)response;
-				}
-			}
-			if(millis() - time > TIMEOUT){
-				println("Response timed out");
-				message.draw("Sending timed out, try again");
-				return -1;
-			}
-		}
 	}
 	
-	float readPort(){		
-		String in_string = port.readStringUntil('\n');
-		if(in_string != null){
-			in_string = trim(in_string);
-			try{
-				//print("Read string: ");
-				//println(in_string);
-				return Float.parseFloat(in_string);
-			}
-			catch(NumberFormatException e){				
-				println("Oops! Tried to parse a non-float string!");
-				println(in_string);
-			}
-		}
-		return -5000;
-	}	
+
 	
 	/** Helper functions **/
 	
