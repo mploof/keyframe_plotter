@@ -16,19 +16,26 @@ public class KeyframePlotter extends PApplet {
 	Bounce bounce = new Bounce(this);						// Mouse debouncing object
 	Indicator graph_loc = new Indicator(this);
 	Indicator mouse_loc = new Indicator(this);
+	Button connect = new Button(this);
 	Button send = new Button(this);
 	Button title = new Button(this);
 	Indicator message = new Indicator(this);
 	
+	// General use constants
+	final int BYTE_SIZE = 1;	// Size of a single byte
+	final int INT_SIZE = 2;		// Size of an integer
+	final int FLOAT_SIZE = 4;	// Size of a floating point number
+	final int XY_SIZE = 2;		// Represents the two values necessary for an XY location
 	
 	// Program states
 	final int NONE = -1;
 	final int GET_INPUT = 1;
 	final int MODIFY_INPUT = 2;
 	final int SEND_DATA = 3;
-	final int CONFIRM = 4;
-	final int CTRL = 5;
-	final int INTERP = 6;
+	final int DRAW_POINTS = 4;
+	final int CONFIRM = 5;
+	final int CTRL = 6;
+	final int INTERP = 7;
 	int state = GET_INPUT;
 	
 	final int MAX_KF = 7;
@@ -36,6 +43,8 @@ public class KeyframePlotter extends PApplet {
 	float x = -1000;   										// x coordinate points retrieved from MCU
 	float y = -1000;										// y coordinate points retrieved from MCU
 	int spline_pnt_count = 60;
+	boolean port_open = true;
+	boolean timed_out = false;
 	
 	int command = 0;
 	
@@ -62,8 +71,10 @@ public class KeyframePlotter extends PApplet {
 		float b_margin = 10;
 		float b_offset = b_margin + b_height/2;
 		graph_loc.init("Xg", "Yg", width - (75/2) - 15, (50/2) + grid.y_min_px, b_width, b_height);
-		mouse_loc.init("Xm", "Ym", graph_loc.posX, graph_loc.y_max_px + b_offset, b_width, b_height);	
-		send.init("Send", graph_loc.posX, mouse_loc.y_max_px + b_offset, b_width, b_height);
+		mouse_loc.init("Xm", "Ym", graph_loc.posX, graph_loc.y_max_px + b_offset, b_width, b_height);
+		connect.init("Close Port", graph_loc.posX, mouse_loc.y_max_px + b_offset, b_width, b_height);
+		connect.draw();
+		send.init("Send", graph_loc.posX, connect.y_max_px + b_offset, b_width, b_height);
 		send.draw();
 		
 	}
@@ -71,6 +82,7 @@ public class KeyframePlotter extends PApplet {
 	public void draw() {
 		
 		// Always do these things		
+		timeOutCheck();
 		updateMousePos();		
 		checkButtons();
 
@@ -80,7 +92,10 @@ public class KeyframePlotter extends PApplet {
 				getInput();
 				break;
 			case SEND_DATA:
-				sendData();
+				sendData();				
+				break;
+			case DRAW_POINTS:
+				drawSplinePoints(5, 255, 0, 0);
 				state = GET_INPUT;
 				break;
 			case CONFIRM:
@@ -95,6 +110,17 @@ public class KeyframePlotter extends PApplet {
 		bounce.set();
 	}
 	
+	void timeOutCheck(){
+		if(timed_out){
+			port.clear();
+			port.stop();
+			port_open = false;
+			message.draw("Command timed out. Unplug and replug NMX, then reopen com port");
+			connect.label = "Open Port";			
+			connect.draw();
+		}
+	}
+	
 	void checkButtons(){
 		if(mousePressed == true){
 			if(mouseButton == LEFT && bounce.get() ==  false){
@@ -104,6 +130,21 @@ public class KeyframePlotter extends PApplet {
 					send.colorText(200, 200, 200);
 					send.draw();
 					state = SEND_DATA;
+				}
+				else if(connect.overButton()){
+					if(port_open){
+						port.clear();
+						port.stop();
+						port_open = false;
+						connect.label = "Open Port";
+						connect.draw();
+					}
+					else{
+						port = new Serial(this, Serial.list()[4], 9600);
+						port_open = true;
+						connect.label = "Close Port";
+						connect.draw();
+					}							
 				}
 			}
 		}	
@@ -239,27 +280,38 @@ public class KeyframePlotter extends PApplet {
 	
 	/** Send state functions **/
 	
-	void sendData(){
+	void sendData(){		
 		
-		final int BYTE_SIZE = 1;	// Size of a single byte
-		final int INT_SIZE = 2;		// Size of an integer
-		final int FLOAT_SIZE = 4;	// Size of a floating point number
-		final int XY_SIZE = 2;		// Represents the two values necessary for an XY location
+		if(!port_open){
+			println("The port is not open, fool!");
+			message.draw("Com port not opened!");
+			state = GET_INPUT;
+			return;
+		}
+			
+		
 		final int FLUSH_COUNT = 0;	// Number of times to spam the controller before sending real info 
 		
 		// Flush the NMX
 		println("Sending clearing commands to NMX");
-		for(int i = 0; i < FLUSH_COUNT; i++)
+		for(int i = 0; i < FLUSH_COUNT; i++){
 			NMXCommand(5, 100);
+			if(timed_out)
+				return;
+		}
 		
 		// Send key frame count / indicate start of transmission
 		println("Sending key frame count");
 		NMXCommand(5, 10, INT_SIZE, key_frames.size());
+		if(timed_out)
+			return;
 		
 		
 		// Verify the frame count
 		println("Verifying key frame count");
 		NMXCommand(5, 100);
+		if(timed_out)
+			return;
 		
 		// **** Send key frame points*** //		
 		
@@ -282,25 +334,32 @@ public class KeyframePlotter extends PApplet {
 				int out_val = Float.floatToIntBits(temp_val);				
 				
 				// Send data packet
-				NMXCommand(5, 11, FLOAT_SIZE, out_val);								
+				NMXCommand(5, 11, FLOAT_SIZE, out_val);			
+				if(timed_out)
+					return;
 			}
 		}
 		
 		// End the transmission
 		println("Ending key frame point transmission");
 		NMXCommand(5, 10, INT_SIZE, 0);
+		if(timed_out)
+			return;
 		
 		// Check point count again
 		println("Double checking point count");
 		NMXCommand(5, 100);
-				
+		if(timed_out)
+			return;
+		
+		state = DRAW_POINTS;				
 	}
 	
-	void NMXCommand(int _sub_addr, int _command){
-		NMXCommand(_sub_addr, _command, 0, 0);	
+	String NMXCommand(int _sub_addr, int _command){
+		return NMXCommand(_sub_addr, _command, 0, 0);	
 	}
 	
-	void NMXCommand(int _sub_addr, int _command, int _length, int _data){
+	String NMXCommand(int _sub_addr, int _command, int _length, int _data){
 		
 		// Assemble command packet
 		String header = "0000000000FF";
@@ -341,23 +400,26 @@ public class KeyframePlotter extends PApplet {
 		while(true){
 			// Wait for response packet to show up in buffer
 			delay(10);			
+			String response = "";
 			if(port.available() > 0){
 				print("NMX response: ");		
 				int size = port.available();
 				int[] in_byte = new int[size];
 				for(int i = 0; i < in_byte.length; i++){
 					in_byte[i] = port.read();
-					String debug = in_byte[i] <= 15 ? "0" + Integer.toHexString(in_byte[i]) : Integer.toHexString(in_byte[i]); 
+					String debug = in_byte[i] <= 15 ? "0" + Integer.toHexString(in_byte[i]) : Integer.toHexString(in_byte[i]);
+					response = response + debug;
 					print(debug);
 					print(" ");
 				}
 				println("");
-				break;
+				return response;
 			}						
 			// Eventually bail if it never shows up
 			if(millis() - time > TIMEOUT){
 				println("Timed out waiting for NMX response packet");
-				break;
+				timed_out = true;
+				return "-1";
 			}			
 		}	
 	}
@@ -374,48 +436,92 @@ public class KeyframePlotter extends PApplet {
 	
 	/** Draw state functions **/
 	
-	void drawSplinePoints(int p_size, int p_r, int p_g, int p_b){
-		  println("Getting points");
-		  println("delay");
-		  delay(500);
-		  		 
-		  println("Entering point retrieval loop");		  
-		  int i = 0;
-		  float cur_x = -1000;
-		  float cur_y = -1000;		  
-		  
-		  while(true){
-		    delay(10);		    
-		    if(port.available() > 0){
-		    	
-		    	float in_float = readPort();		    
-		         
-		        if(i%2 == 0)
-		        	cur_x = grid.x_px(in_float);
-		        else
-		        	cur_y = grid.y_px(in_float);       
-		       
-		           
-		         // If both of the coordinates have now been set, draw the point:
-		         if(cur_x != -1000 && cur_y != -1000){
-		           // draw the point:
-		           strokeWeight(p_size);
-		           stroke(p_r, p_g, p_b);
-		           point(cur_x, cur_y);
-		           // reset the point vars:
-		           cur_x = -1000;
-		           cur_y = -1000;		         
-		         }
-		         i++;
-		         if(i == spline_pnt_count * 2){
-		        	 break;
-		         }
-		       		       
-		    }  
-		  }
+	void drawSplinePoints(int p_size, int p_r, int p_g, int p_b){		
+		String response;
+		int curve_point_count = 150;
+		
+		// Set number of spline points to be retrieved
+		println("Setting curve point count");
+		NMXCommand(5, 12, INT_SIZE, curve_point_count);
+		if(timed_out)
+			return;
+		
+	  	// Check number of spline points to be retrieved
+	    println("Getting curve point count");
+	    response = NMXCommand(5, 101);
+	    if(timed_out)
+			return;
+		int spline_point_count = (int)parseResponse(response);	    
+	    
+		// Signal start of point retrieval
+		println("Signaling start of point retrieval");
+		NMXCommand(5, 102);
+		if(timed_out)
+			return;
+		
+		float cur_x = -1000;
+		float cur_y = -1000;
+		
+       for(int i = 0; i < spline_point_count * XY_SIZE ; i++){
+	        	    	
+    	  response = NMXCommand(5, 103, INT_SIZE, i);
+    	  if(timed_out)
+				return;
+    	  float in_val = parseResponse(response) / 100;		// This will be a float, so need to divide by 100 on master device side
+    	  print("in_val: ");
+    	  println(in_val);
+         
+          if(i % 2 == 0)
+        	  cur_x = grid.x_px(in_val);
+          else
+        	  cur_y = grid.y_px(in_val);
+           
+          // If both of the coordinates have now been set, draw the point:
+          if(cur_x != -1000 && cur_y != -1000){
+              // draw the point:
+        	  strokeWeight(p_size);
+        	  stroke(p_r, p_g, p_b);
+        	  point(cur_x, cur_y);
+        	  // reset the point vars:
+        	  cur_x = -1000;
+        	  cur_y = -1000;		         
+          }
+	   }
 	}
 	
+	float parseResponse(String input){
+				
+		int length = Integer.decode("0x" + input.substring(18, 20));
+		int data_type = Integer.decode("0x" + input.substring(20, 22));		
+		long data = Long.decode("0x" + input.substring(22, input.length()));	
+		
+		switch(data_type){
+		// Byte
+		case 0:			
+		// uint
+		case 1:			
+		// int
+		case 2:			
+		// long
+		case 3:			
+		// ulong
+		case 4:	
+			// In cases 0-4, we shouldn't need to do anything
+			break;
+		// float
+		case 5:
+			// This is an error because the NMX shouldn't actually be sending true floats
+			data = -5000;
+			break;
+		// string
+		case 6:
+			// This is an error code, since a string can't convert to a float nicely
+			data = -5000;
+			break;
+		}
 
+		return data;
+	}
 	
 	/** Helper functions **/
 	
