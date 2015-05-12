@@ -22,6 +22,11 @@ public class KeyframePlotter extends PApplet {
 	Button mem_check = new Button(this);
 	Indicator message = new Indicator(this);
 	
+	// Graphics variables
+	int bgnd_r = 114;
+	int bgnd_g = 159;
+	int bgnd_b = 192;
+	
 	// General use constants
 	final int BYTE_SIZE = 1;	// Size of a single byte
 	final int INT_SIZE = 2;		// Size of an integer
@@ -50,7 +55,9 @@ public class KeyframePlotter extends PApplet {
 	
 	int spline_point_count;
 	float[] spline_point;
+	float[] vel_point;
 	boolean spline_available = false;
+	boolean vel_available = false;
 	
 	int command = 0;
 	final int PORT_NUM = 4;
@@ -62,7 +69,7 @@ public class KeyframePlotter extends PApplet {
 		port = new Serial(this, Serial.list()[PORT_NUM], 9600);
 		
 		size(800, 650);
-		background(100, 100, 100);		
+		background(bgnd_r, bgnd_g, bgnd_b);		
 		grid.init(55, -5, 5, 10000, -10000, 1000);
 		grid.draw();
 		
@@ -102,6 +109,7 @@ public class KeyframePlotter extends PApplet {
 				break;
 			case DRAW_POINTS:
 				getSplinePoints();
+				getVelPoints();
 				state = GET_INPUT;
 				break;
 			case CONFIRM:
@@ -128,6 +136,7 @@ public class KeyframePlotter extends PApplet {
 	}
 	
 	/*** Button Actions ***/
+	
 	void memCheckAction(){			
 		if(port_open){		
 			println("Checking memory");
@@ -201,8 +210,11 @@ public class KeyframePlotter extends PApplet {
 			
 	}
 	
+	
+	/*** Graphics Management ***/
+	
 	void updateGraphics(){
-		background(100, 100, 100);
+		background(bgnd_r, bgnd_g, bgnd_b);
 		mem_check.draw();
 		connect.draw();
 		send.draw();
@@ -223,13 +235,22 @@ public class KeyframePlotter extends PApplet {
 		    // If both of the coordinates have now been set, draw the point:
 		    for(int i = 0; i < spline_point_count * XY_SIZE; i += 2){
 		        // draw the point:
-		  	  strokeWeight(5);
+		  	  strokeWeight(2);
 		  	  stroke(255, 0, 0);
 		  	  if(i == spline_point_count * XY_SIZE - 2)
 		  		point(key_frames.get(key_frames.size() - 1).posX, key_frames.get(key_frames.size() - 1).posY);
 		  	  else
-		  		point(spline_point[i], spline_point[i+1]);
+		  		point(spline_point[i], spline_point[i + 1]);
 		    }
+		}
+		if(vel_available){
+			// If both of the coordinates have now been set, draw the point:
+		    for(int i = 0; i < spline_point_count * XY_SIZE; i += 2){
+		    	// draw the point:
+		  	  	strokeWeight(2);
+		  	  	stroke(0, 0, 255);
+		  	  	point(vel_point[i], vel_point[i + 1]);
+		    }			
 		}
 
 	}
@@ -243,12 +264,12 @@ public class KeyframePlotter extends PApplet {
 
 		// If so, modify it
 		if(cur_kf > -1){
-			println("Modifying key frame");
+			//println("Modifying key frame");
 			modifyKF(cur_kf);
 		}
 		// Otherwise, add a new point
 		else if(grid.overGrid() && cur_kf == -1 && bounce.get() == false){
-			println("Adding key frame");
+			//println("Adding key frame");
 			addKF();
 		}
 	}
@@ -505,7 +526,7 @@ public class KeyframePlotter extends PApplet {
 	
 	void getSplinePoints(){		
 		String response;
-		spline_point_count = 150;
+		spline_point_count = 250;
 		spline_point = new float[spline_point_count * XY_SIZE];
 		
 		// Set number of spline points to be retrieved
@@ -543,6 +564,27 @@ public class KeyframePlotter extends PApplet {
            
           }	  
        spline_available = true;
+	}
+	
+	void getVelPoints(){		
+		String response;		
+		vel_point = new float[spline_point_count * XY_SIZE];
+		
+       for(int i = 0; i < spline_point_count; i++){
+	        	    	
+    	  response = NMXCommand(5, 104, INT_SIZE, i);
+    	  if(timed_out)
+				return;
+    	  float in_val = parseResponse(response) / 10;		// This will be a float, so need to divide by 100 on master device side
+    	  print("in_val: ");
+    	  println(in_val);
+         
+          
+          vel_point[i*2] = spline_point[i * 2];          
+          vel_point[i*2 + 1] = grid.y_px(in_val);
+           
+       }	  
+       vel_available = true;
 	}
 	
 	float parseResponse(String input){

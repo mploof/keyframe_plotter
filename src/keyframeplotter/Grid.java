@@ -223,5 +223,7 @@ public class Grid {
 			if(location > y_min_px && location < y_max_px)
 				p.text((int)(y_max - (i * y_inc)), x_zero_px - 5, location);			          
 		}
+		p.noFill();
+		p.rect(left_margin, top_margin, x_max_px - x_min_px, y_max_px - y_min_px);
 	}
 }

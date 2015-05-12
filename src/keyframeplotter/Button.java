@@ -73,8 +73,7 @@ public class Button {
 	}
 	
 	// Initialize circular button
-	void init(String _text, float _posX, float _posY, float _radius){	
-		PApplet.println("Initializing circle");
+	void init(String _text, float _posX, float _posY, float _radius){		
 		height = 0;
 		width = 0;
 		radius = _radius;
