@@ -19,8 +19,8 @@ public class Indicator {
 	// Indicator properties
 	float height, width, posX, posY, x_max_px, x_min_px, y_max_px, y_min_px, margin;							
 	int		weight, r_b, g_b, b_b;	
-	String label_0, label_1, value_0, value_1;	// Button label text
-	int text_size, text_margin, r_t, g_t, b_t, alignment;	// Label parameters
+	String label_0, label_1, value_0, value_1, output_0, output_1;	// Button label text
+	int text_size, text_margin, r_t, g_t, b_t, alignment;			// Label parameters
 	boolean clicked;
 	
 	
@@ -49,6 +49,8 @@ public class Indicator {
 		// Set default label parameters
 		label_0 = "";
 		label_1 = "";
+		output_0 = "";
+		output_1 = "";
 		text_size = 14;
 		r_t = 0;
 		g_t = 0;
@@ -96,9 +98,17 @@ public class Indicator {
 		p.textSize(text_size);
 		p.textAlign(PConstants.LEFT, PConstants.CENTER);		
 	}
+	
+	void draw(){
+		if(output_1 == "")
+			draw(output_0);
+		else
+			draw(output_0, output_1);
+	}
 
 	// Draw single line indicator
 	void draw(String _value_0){
+		output_0 = _value_0;
 		prepDraw();
 		p.text(label_0.concat(_value_0), posX - width/2 + text_margin, posY);        
 	}
@@ -106,6 +116,9 @@ public class Indicator {
 		
 	// Draw two line indicator
 	void draw(String _value_0, String _value_1){
+		
+		output_0 = _value_0;
+		output_1 = _value_1;
 		
 		prepDraw();
 		p.text(label_0.concat(_value_0), posX - width/2 + text_margin, posY - height/4);

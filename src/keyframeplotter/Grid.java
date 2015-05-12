@@ -161,7 +161,7 @@ public class Grid {
 	
 	boolean overGridY(){
 		
-		if(p.mouseY >= y_min_px && p.mouseY <= y_zero_px)
+		if(p.mouseY >= y_min_px && p.mouseY <= y_max_px)
 			return true;
 		else
 			return false;		

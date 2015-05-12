@@ -19,12 +19,14 @@ public class KeyframePlotter extends PApplet {
 	Button connect = new Button(this);
 	Button send = new Button(this);
 	Button title = new Button(this);
+	Button mem_check = new Button(this);
 	Indicator message = new Indicator(this);
 	
 	// General use constants
 	final int BYTE_SIZE = 1;	// Size of a single byte
 	final int INT_SIZE = 2;		// Size of an integer
-	final int FLOAT_SIZE = 4;	// Size of a floating point number
+	final int LONG_SIZE = 4;	// Size of a long integer
+	final int FLOAT_SIZE = 4;	// Size of a floating point number	
 	final int XY_SIZE = 2;		// Represents the two values necessary for an XY location
 	
 	// Program states
@@ -46,17 +48,22 @@ public class KeyframePlotter extends PApplet {
 	boolean port_open = true;
 	boolean timed_out = false;
 	
+	int spline_point_count;
+	float[] spline_point;
+	boolean spline_available = false;
+	
 	int command = 0;
+	final int PORT_NUM = 4;
 	
 	
 	public void setup() {
 		
-		// Open proper com port
-		port = new Serial(this, Serial.list()[4], 9600);
+		// Open proper com port		
+		port = new Serial(this, Serial.list()[PORT_NUM], 9600);
 		
 		size(800, 650);
 		background(100, 100, 100);		
-		grid.init(55, -5, 5, 380, -20, 20);
+		grid.init(55, -5, 5, 10000, -10000, 1000);
 		grid.draw();
 		
 		// Initialize state indicator
@@ -66,25 +73,24 @@ public class KeyframePlotter extends PApplet {
 		message.draw(" ");
 		
 		// Initialize buttons and indicators in right tool bar
-		float b_width = 75;
+		float b_width = 90;
 		float b_height = 50;
 		float b_margin = 10;
 		float b_offset = b_margin + b_height/2;
 		graph_loc.init("Xg", "Yg", width - (75/2) - 15, (50/2) + grid.y_min_px, b_width, b_height);
 		mouse_loc.init("Xm", "Ym", graph_loc.posX, graph_loc.y_max_px + b_offset, b_width, b_height);
-		connect.init("Close Port", graph_loc.posX, mouse_loc.y_max_px + b_offset, b_width, b_height);
-		connect.draw();
-		send.init("Send", graph_loc.posX, connect.y_max_px + b_offset, b_width, b_height);
-		send.draw();
-		
+		mem_check.init("Mem Check", graph_loc.posX, mouse_loc.y_max_px + b_offset, b_width, b_height);		
+		connect.init("Close Port", graph_loc.posX, mem_check.y_max_px + b_offset, b_width, b_height);		
+		send.init("Send", graph_loc.posX, connect.y_max_px + b_offset, b_width, b_height);				
 	}
 
 	public void draw() {
 		
-		// Always do these things		
+		// Always do these things
 		timeOutCheck();
+		updateGraphics();		
 		updateMousePos();		
-		checkButtons();
+		checkButtons();		
 
 		// Then execute the current state
 		switch(state){
@@ -95,7 +101,7 @@ public class KeyframePlotter extends PApplet {
 				sendData();				
 				break;
 			case DRAW_POINTS:
-				drawSplinePoints(5, 255, 0, 0);
+				getSplinePoints();
 				state = GET_INPUT;
 				break;
 			case CONFIRM:
@@ -121,31 +127,65 @@ public class KeyframePlotter extends PApplet {
 		}
 	}
 	
+	/*** Button Actions ***/
+	void memCheckAction(){			
+		if(port_open){		
+			println("Checking memory");
+			mem_check.colorFill(20, 20, 20);
+			mem_check.colorText(200, 200, 200);
+			mem_check.draw();
+			String response = NMXCommand(0, 200);
+			float mem_val = parseResponse(response);
+			message.draw("Memory available = " + Float.toString(mem_val) + " bytes");
+		}
+		else
+		message.draw("Port not open, can't send mem check request!");		
+	}
+	
+	void sendAction(){
+		println("Send clicked");
+		send.colorFill(20, 20, 20);
+		send.colorText(200, 200, 200);
+		send.draw();
+		state = SEND_DATA;
+	}
+	
+	void connectAction(){
+		if(port_open){
+			println("Send clicked");
+			connect.colorFill(20, 20, 20);
+			connect.colorText(200, 200, 200);
+			connect.draw();
+			port.clear();
+			port.stop();
+			port_open = false;
+			connect.label = "Open Port";
+			connect.draw();
+		}
+		else{
+			connect.colorFill(200, 200, 200);
+			connect.colorText(0, 0, 0);
+			connect.draw();
+			port = new Serial(this, Serial.list()[PORT_NUM], 9600);
+			port_open = true;
+			timed_out = false;
+			connect.label = "Close Port";
+			connect.draw();
+		}
+	}
+	
 	void checkButtons(){
 		if(mousePressed == true){
 			if(mouseButton == LEFT && bounce.get() ==  false){
 				if(send.overButton()){
-					println("Send clicked");
-					send.colorFill(20, 20, 20);
-					send.colorText(200, 200, 200);
-					send.draw();
-					state = SEND_DATA;
+					sendAction();
 				}
 				else if(connect.overButton()){
-					if(port_open){
-						port.clear();
-						port.stop();
-						port_open = false;
-						connect.label = "Open Port";
-						connect.draw();
-					}
-					else{
-						port = new Serial(this, Serial.list()[4], 9600);
-						port_open = true;
-						connect.label = "Close Port";
-						connect.draw();
-					}							
+					connectAction();
+												
 				}
+				else if(mem_check.overButton())
+					memCheckAction();				
 			}
 		}	
 		// Otherwise un-highlight all buttons
@@ -153,9 +193,45 @@ public class KeyframePlotter extends PApplet {
 			send.colorFill(200, 200, 200);
 			send.colorText(0, 0, 0);
 			send.draw();
+			mem_check.colorFill(200, 200, 200);
+			mem_check.colorText(0, 0, 0);
+			mem_check.draw();
 			bounce.set(false);
 		}
 			
+	}
+	
+	void updateGraphics(){
+		background(100, 100, 100);
+		mem_check.draw();
+		connect.draw();
+		send.draw();
+				
+		title.draw();
+		message.draw();
+		
+		// Redraw the grid and buttons
+		grid.draw();
+		updateMousePos();
+		for(int i = 0; i < key_frames.size(); i++){
+			Button this_point = key_frames.get(i);
+			this_point.label = Integer.toString(i + 1);
+			this_point.draw();					
+		}	
+		
+		if(spline_available){
+		    // If both of the coordinates have now been set, draw the point:
+		    for(int i = 0; i < spline_point_count * XY_SIZE; i += 2){
+		        // draw the point:
+		  	  strokeWeight(5);
+		  	  stroke(255, 0, 0);
+		  	  if(i == spline_point_count * XY_SIZE - 2)
+		  		point(key_frames.get(key_frames.size() - 1).posX, key_frames.get(key_frames.size() - 1).posY);
+		  	  else
+		  		point(spline_point[i], spline_point[i+1]);
+		    }
+		}
+
 	}
 	
 	/** Input state functions **/
@@ -171,7 +247,7 @@ public class KeyframePlotter extends PApplet {
 			modifyKF(cur_kf);
 		}
 		// Otherwise, add a new point
-		else if(cur_kf == -1 && bounce.get() == false){
+		else if(grid.overGrid() && cur_kf == -1 && bounce.get() == false){
 			println("Adding key frame");
 			addKF();
 		}
@@ -214,7 +290,7 @@ public class KeyframePlotter extends PApplet {
 	void addKF(){
 				
 		// Only add key frames if they're being placed on the grid and don't exceed the max KF count
-		if(grid.overGrid() && key_frames.size() < MAX_KF){
+		if(key_frames.size() < MAX_KF){
 			key_frames.add(new Button(this));
 			Button this_point = key_frames.get(key_frames.size() - 1);
 			float posX = (int)grid.x() * grid.x_unit_px + grid.x_zero_px;			
@@ -262,16 +338,7 @@ public class KeyframePlotter extends PApplet {
 		}
 		else if(mouseButton == RIGHT){
 			key_frames.remove(p_kf);
-		}
-		
-		// Redraw the grid and buttons
-		grid.draw();
-		updateMousePos();
-		for(int i = 0; i < key_frames.size(); i++){
-			Button this_point = key_frames.get(i);
-			this_point.label = Integer.toString(i + 1);
-			this_point.draw();					
-		}	
+		}		
 
 	
 		//bounce.set();
@@ -436,13 +503,14 @@ public class KeyframePlotter extends PApplet {
 	
 	/** Draw state functions **/
 	
-	void drawSplinePoints(int p_size, int p_r, int p_g, int p_b){		
+	void getSplinePoints(){		
 		String response;
-		int curve_point_count = 150;
+		spline_point_count = 150;
+		spline_point = new float[spline_point_count * XY_SIZE];
 		
 		// Set number of spline points to be retrieved
 		println("Setting curve point count");
-		NMXCommand(5, 12, INT_SIZE, curve_point_count);
+		NMXCommand(5, 12, INT_SIZE, spline_point_count);
 		if(timed_out)
 			return;
 		
@@ -459,9 +527,6 @@ public class KeyframePlotter extends PApplet {
 		if(timed_out)
 			return;
 		
-		float cur_x = -1000;
-		float cur_y = -1000;
-		
        for(int i = 0; i < spline_point_count * XY_SIZE ; i++){
 	        	    	
     	  response = NMXCommand(5, 103, INT_SIZE, i);
@@ -472,21 +537,12 @@ public class KeyframePlotter extends PApplet {
     	  println(in_val);
          
           if(i % 2 == 0)
-        	  cur_x = grid.x_px(in_val);
+        	  spline_point[i] = grid.x_px(in_val);
           else
-        	  cur_y = grid.y_px(in_val);
+        	  spline_point[i] = grid.y_px(in_val);
            
-          // If both of the coordinates have now been set, draw the point:
-          if(cur_x != -1000 && cur_y != -1000){
-              // draw the point:
-        	  strokeWeight(p_size);
-        	  stroke(p_r, p_g, p_b);
-        	  point(cur_x, cur_y);
-        	  // reset the point vars:
-        	  cur_x = -1000;
-        	  cur_y = -1000;		         
-          }
-	   }
+          }	  
+       spline_available = true;
 	}
 	
 	float parseResponse(String input){
@@ -494,6 +550,10 @@ public class KeyframePlotter extends PApplet {
 		int length = Integer.decode("0x" + input.substring(18, 20));
 		int data_type = Integer.decode("0x" + input.substring(20, 22));		
 		long data = Long.decode("0x" + input.substring(22, input.length()));	
+
+		// Handle negative longs
+		if(data_type == 3 && Integer.decode("0x" + input.substring(22, 24)) == 255)
+			data = data - Long.decode("0xffffffff"); 
 		
 		switch(data_type){
 		// Byte
