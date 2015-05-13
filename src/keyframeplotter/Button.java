@@ -40,16 +40,16 @@ public class Button {
 		p = _p;
 		
 		// Set default button parameters		
-		posX = -100;
-		posY = -100;
-		height = 100;
-		width = 200;
-		radius = 25;
-		weight = 1;
-		r_b = 200;
-		g_b = 200;
-		b_b = 200;
-		margin = 10;
+		posX = -100;						// X Screen position in px
+		posY = -100;						// Y Screen position in px
+		height = 100;						// Rectangular height in px
+		width = 200;						// Rectangular width in px
+		radius = 25;						// Circular radius in px
+		weight = 1;							// Weight of outline
+		r_b = 200;							// Background R value
+		g_b = 200;							// Background G value
+		b_b = 200;							// Background B value
+		margin = 10;						// Margin from other items (must be implemented manually)
 		
 		// Set default label parameters
 		label = "";
