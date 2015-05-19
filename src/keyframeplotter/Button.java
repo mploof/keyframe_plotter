@@ -21,7 +21,7 @@ public class Button {
 	float radius;									
 	
 	// Common parameters
-	float 	posX, posY, x_max_px, x_min_px, y_max_px, y_min_px, margin;;							
+	float 	posX, posY, suX, suY, x_max_px, x_min_px, y_max_px, y_min_px, margin;							
 	int		weight, r_b, g_b, b_b;	
 	String label;								// Button label text
 	int text_size, r_t, g_t, b_t;				// Label parameters
@@ -105,7 +105,7 @@ public class Button {
 		b_t = _b;
 	}
 	
-	// Draw the button and label
+	// Draw the button and label at a point other than the stored X and Y values
 	void draw(){
 		
 		// Set drawing parameters

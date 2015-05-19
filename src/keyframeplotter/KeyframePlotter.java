@@ -12,25 +12,57 @@ public class KeyframePlotter extends PApplet {
 	
 	ArrayList<Button> key_frames = new ArrayList<Button>();	// List of buttons that will represent key frames
 	Serial port;        									// The serial port
-	Grid grid = new Grid(this, 50, 300, 30, 105);			// Grid object
 	Bounce bounce = new Bounce(this);						// Mouse debouncing object
+	int grid_top_margin = 50;
+	int grid_bottom_margin = 300;
+	int grid_left_margin = 30;
+	int grid_right_margin = 105;	
+	Grid grid = new Grid(this, grid_top_margin, grid_bottom_margin, 
+			grid_left_margin, grid_right_margin);			// Grid object
+	
+	// Serial port vars
+	final int PORT_NUM = 4;
+	boolean port_open = true;
+	boolean timed_out = false;
+	
+	// Right side tool bar
 	Indicator graph_loc = new Indicator(this);
 	Indicator mouse_loc = new Indicator(this);
 	Button connect = new Button(this);
-	Button send = new Button(this);
-	Button title = new Button(this);
 	Button mem_check = new Button(this);
+	Button send = new Button(this);		
 	Button get_kf = new Button(this);
 	Button lock_x= new Button(this);
 	Button lock_y = new Button(this);
+	
+	// Center object
+	Button title = new Button(this);
 	Indicator message = new Indicator(this);
 	Slider slider = new Slider(this);
+	
+	// Lower tool bar
+	Slider grid_scale_x = new Slider(this);
+	Button clear_kf = new Button(this);
+	Button go_home = new Button(this);
+	Button start_program = new Button(this);
+	Button stop_motors = new Button(this);
+	
+	// Left side tool bar
+	Slider grid_scale_y = new Slider(this);
 	
 	// Graphics variables
 	int bgnd_r = 114;
 	int bgnd_g = 159;
 	int bgnd_b = 192;
 	int kf_point_radius = 20;
+	
+	// Grid variables
+	int x_interval = 5;
+	int x_min;
+	int x_max;
+	int y_interval = 1000;
+	int y_min;
+	int y_max;
 	
 	// NMX communication constants and vars
 	final int BYTE_SIZE = 1;	// Size of a single byte
@@ -50,33 +82,36 @@ public class KeyframePlotter extends PApplet {
 	final int MODIFY_INPUT = 2;
 	final int SEND_DATA = 3;
 	final int DRAW_POINTS = 4;
-	final int CONFIRM = 5;
+	final int RUN = 5;
 	final int CTRL = 6;
 	final int INTERP = 7;
 	int state = GET_INPUT;
 	
 	// Motor control
+	final int MOTOR_COUNT = 3;
 	float max_speed = 5000;
-	boolean joystick_mode = false;
+	boolean joystick_mode = false;	
+	float current_pos = 0;
+	boolean moving = false;
+	boolean check_moving = false;
 	
+	// KF and Spline vars
 	final int MAX_KF = 7;
-	
-	float x = -1000;   										// x coordinate points retrieved from MCU
-	float y = -1000;										// y coordinate points retrieved from MCU	
-	boolean port_open = true;
-	boolean timed_out = false;
-	
-	int spline_point_count = 150;
+	int spline_point_count = 1000;
 	float[] spline_point;
 	float[] vel_point;
 	boolean spline_available = false;
 	boolean vel_available = false;
 	
-	int command = 0;
-	final int PORT_NUM = 1;
-	
 	// Timing vars
 	long check_time = millis();
+	long program_start_time;
+	
+	// Program run vars
+	long run_time = 0;
+	float run_time_sec = 0;
+	final float MILLIS_PER_SEC = 1000;
+	int cur_vel_pnt = -1;
 	
 	
 	public void setup() {
@@ -85,11 +120,13 @@ public class KeyframePlotter extends PApplet {
 		port = new Serial(this, Serial.list()[PORT_NUM], 9600);
 		
 		size(800, 900);
-		background(bgnd_r, bgnd_g, bgnd_b);		
-		grid.init(55, -5, 5, 10000, -10000, 1000);
+		background(bgnd_r, bgnd_g, bgnd_b);
+		
+		setGridVals();
+		grid.init(x_max, x_min, x_interval, y_max, y_min, y_interval);
 		grid.draw();
 		
-		// Initialize buttons and indicators in right tool bar
+		// Initialize buttons and indicators in right toolbar
 		float b_width = 90;
 		float b_height = 50;
 		float b_margin = 10;
@@ -103,9 +140,13 @@ public class KeyframePlotter extends PApplet {
 		lock_x.init("Lock X", graph_loc.posX, get_kf.y_max_px + b_offset, b_width, b_height);
 		lock_y.init("Lock Y", graph_loc.posX, lock_x.y_max_px + b_offset, b_width, b_height);
 		lock_x.clicked = false;
-		lock_y.clicked = false;
-				
+		lock_y.clicked = false;		
 		
+		// Initialize left side toolbar
+		int grid_scale_thickness = 15;		
+		grid_scale_y.init(grid.height, grid_scale_thickness, true, grid_left_margin / 2, grid.y_mid_px, 100, 10000, false);
+		grid_scale_y.setSlidePercent(0);
+		grid_scale_y.draw();
 		
 		// Initialize mid-screen indicators
 		float i_height = 30;
@@ -114,11 +155,32 @@ public class KeyframePlotter extends PApplet {
 		title.init("Key Frame Editor", width/2, 25, 200, i_height);
 		title.draw();
 
-		message.init("Message", "NULL", grid.x_center, grid.y_max_px + i_margin + i_height/2, grid.width, i_height);		
+		grid_scale_x.init(grid.width, grid_scale_thickness, false, grid.x_mid_px, grid.y_max_px + i_margin + grid_scale_thickness/2, 5, 100, false);
+		grid_scale_x.setSlidePercent(0);
+		grid_scale_x.draw();
+		
+		message.init("Message", "NULL", grid.x_center, grid_scale_x.getYMax() + i_margin + i_height/2, grid.width, i_height);		
 		message.draw(" ");
 
 		slider.init(grid.width, i_height, false, grid.x_mid_px, message.y_max_px + i_margin + i_height/2, -1, 1, true);
 		slider.draw();		
+		
+		// Initialize lower toolbar buttons
+		float lt_width = 100;
+		float lt_height = 50;
+		float lt_margin = 10;
+		float lt_offset = lt_margin + lt_width/2;
+		float lt_y_pos = slider.getYMax() + lt_height/2 + lt_margin;
+		clear_kf.init("Clear KFs", slider.getXMin() + lt_width / 2, lt_y_pos, lt_width, lt_height);			
+		go_home.init("Snd Mot Home", clear_kf.x_max_px + lt_offset, lt_y_pos, lt_width, lt_height);
+		start_program.init("Start Program", go_home.x_max_px + lt_offset, lt_y_pos, lt_width, lt_height);
+		stop_motors.init("Stop Motors", start_program.x_max_px + lt_offset, lt_y_pos, lt_width, lt_height);
+		
+		// Enable the motors
+		for(int i = 0; i < MOTOR_COUNT; i++){
+			NMXCommand(i, 3, BYTE_SIZE, 1);
+		}
+		
 	}
 
 	public void draw() {		
@@ -127,7 +189,7 @@ public class KeyframePlotter extends PApplet {
 		timeOutCheck();		
 		updateMousePos();	
 		updateGraphics();		
-		//updateMotorSpeed();
+		updateMotorSpeed();
 		checkButtons();		
 
 		// Then execute the current state
@@ -143,7 +205,8 @@ public class KeyframePlotter extends PApplet {
 				getVelPoints();
 				state = GET_INPUT;
 				break;
-			case CONFIRM:
+			case RUN:
+				runProgram();
 				break;
 			case CTRL:
 				break;
@@ -155,6 +218,7 @@ public class KeyframePlotter extends PApplet {
 		bounce.set();
 	}
 	
+	/*** Loop Functions***/
 	void timeOutCheck(){
 		if(timed_out){
 			port.clear();
@@ -165,10 +229,11 @@ public class KeyframePlotter extends PApplet {
 			connect.draw();
 		}
 	}
-	
 	void updateMotorSpeed(){
-		print("Slider clicked? ");
-		println(slider.clicked());
+		
+		// Don't update the speed if a program is running
+		if(state == RUN)
+			return;
 		
 		final int CHECK_TIME = 100;
 		
@@ -183,6 +248,7 @@ public class KeyframePlotter extends PApplet {
 			
 			// Make sure we're in joystick mode
 			if(!joystick_mode){				
+				println("Enabling joystick mode");
 				NMXCommand(0, 23, BYTE_SIZE, 1);
 				if(timed_out){
 					message.draw(TIMED_OUT);
@@ -190,8 +256,14 @@ public class KeyframePlotter extends PApplet {
 				}
 				joystick_mode = true;
 			}
-			float speed = max_speed * slider.val();
-			NMXCommand(1, 13, FLOAT_SIZE, Float.floatToIntBits(speed));
+			float speed = max_speed * slider.getVal();
+			print("Speed: ");
+			println(speed);
+			println(Float.floatToIntBits(speed));
+			// Don't listen for a response from speed command in joystick mode
+			NMXCommand(1, 13, FLOAT_SIZE, Float.floatToIntBits(speed), false);
+			moving = true;
+			check_moving = false;
 			
 		}
 		
@@ -199,28 +271,54 @@ public class KeyframePlotter extends PApplet {
 		else{			
 			// Make sure motors are stopped and joystick mode is disabled
 			if(joystick_mode){
-				NMXCommand(1, 13, FLOAT_SIZE, Float.floatToIntBits(0));
+				println("Stopping motors");
+				NMXCommand(1, 13, FLOAT_SIZE, Float.floatToIntBits(0), false);
 				if(timed_out){
 					message.draw("Failed to stop motors");
 					return;
 				}
+				println("Disabling joystick mode");
 				NMXCommand(0, 23, BYTE_SIZE, 0);
 				if(timed_out){
 					message.draw("Failed to exit joystick mode");
 					return;
-				}
-				joystick_mode = false;
+				}				
+				check_moving = true;
+				joystick_mode = false;		
 			}
-		}
-		
+		}		
 		check_time = millis();
 		
 	}
+	void updatePosition(){		
+		if(moving){
+			// Get the current motor position
+			NMXCommand(1, 106);	
+			current_pos = parseResponse();
+			print("Current grid position: ");
+			println(current_pos);
+			print("Current px position: ");
+			println(grid.y_px(current_pos));
+			if(check_moving){
+				// Check whether the motors have stopped moving
+				NMXCommand(1, 107);
+				if(parseResponse() == 0){
+					check_moving = false;
+					moving  = false;
+					return;				
+				}
+			}
+		}		
+	}
 	
-	/*** Button Actions ***/
 	
+	/*** Button Actions **/
 	void connectAction(){
 		if(port_open){
+			if(state == RUN){
+				message.draw("Can't close port while program is running");
+				return;
+			}
 			println("Send clicked");
 			connect.colorFill(20, 20, 20);
 			connect.colorText(200, 200, 200);
@@ -263,7 +361,12 @@ public class KeyframePlotter extends PApplet {
 				message.draw("Must have at least two keyframes");
 				return;
 			}
+			if(key_frames.size() == 3){
+				message.draw("Doesn't work with three key frames. Not sure why...");
+				return;
+			}
 			println("Send clicked");
+			message.draw("Retrieving movement curve, please wait");
 			send.colorFill(20, 20, 20);
 			send.colorText(200, 200, 200);			
 			state = SEND_DATA;
@@ -307,6 +410,43 @@ public class KeyframePlotter extends PApplet {
 		}
 	}
 	
+	void clearKFAction(){
+		clear_kf.colorFill(20, 20, 20);
+		clear_kf.colorText(200, 200, 200);
+		clear_kf.draw();
+		key_frames.clear();
+		spline_available = false;
+		vel_available = false;
+		message.draw("Key frames cleared");
+	}	
+	void goHomeAction(){
+		NMXCommand(0, 25);
+		moving = true;
+		check_moving = true;		
+	}
+	
+	void startProgramAction(){
+		if(!port_open){
+			message.draw("Can't start program while COM port is closed");
+			return;
+		}
+		else if(!spline_available || !vel_available){
+			message.draw("Must calculate movement curves before starting program");
+			return;
+		}
+		println("********** Starting program **********");
+		state = RUN;
+		cur_vel_pnt = -1;		
+		program_start_time = millis();
+	}
+	void stopMotorsAction(){
+		for(int i = 0; i < MOTOR_COUNT; i++)
+			NMXCommand(i, 4);
+		
+		// Go back to input state (in case a program is running);
+		state = GET_INPUT;
+	}
+	
 	void checkButtons(){
 		if(mousePressed == true){
 			if(mouseButton == LEFT && bounce.get() ==  false){
@@ -322,6 +462,14 @@ public class KeyframePlotter extends PApplet {
 					lockXAction();
 				else if(lock_y.overButton())
 					lockYAction();
+				else if(clear_kf.overButton())
+					clearKFAction();
+				else if(go_home.overButton())
+					goHomeAction();
+				else if(start_program.overButton())
+					startProgramAction();
+				else if(stop_motors.overButton())
+					stopMotorsAction();
 			}
 		}	
 		// Otherwise un-highlight all buttons
@@ -332,6 +480,9 @@ public class KeyframePlotter extends PApplet {
 			mem_check.colorFill(200, 200, 200);
 			mem_check.colorText(0, 0, 0);
 			mem_check.draw();
+			clear_kf.colorFill(200, 200, 200);
+			clear_kf.colorText(0, 0, 0);
+			clear_kf.draw();
 			bounce.set(false);
 		}
 		
@@ -344,7 +495,11 @@ public class KeyframePlotter extends PApplet {
 	/*** Graphics Management ***/
 	
 	void updateGraphics(){
+		
+		// Draw background
 		background(bgnd_r, bgnd_g, bgnd_b);
+		
+		// Draw right toolbar
 		mem_check.draw();
 		connect.draw();
 		send.draw();
@@ -352,19 +507,40 @@ public class KeyframePlotter extends PApplet {
 		lock_x.draw();
 		lock_y.draw();
 				
+		// Draw center items
 		title.draw();
 		message.draw();
 		slider.update();
 		
-		// Redraw the grid and buttons
+		// Draw lower toolbar
+		clear_kf.draw();
+		go_home.draw();
+		start_program.draw();
+		stop_motors.draw();
+		
+		// Draw right toolbar
+		grid_scale_x.update();
+		grid_scale_y.update();
+		
+		// Draw grid		
+		setGridVals();
+		grid.init(x_max, x_min, x_interval, y_max, y_min, y_interval);
 		grid.draw();
 		updateMousePos();
-		for(int i = 0; i < key_frames.size(); i++){
-			Button this_point = key_frames.get(i);
+		
+		// Draw key frame points
+		for(int i = 0; i < key_frames.size(); i++){			
+			Button this_point = key_frames.get(i);			
 			this_point.label = Integer.toString(i + 1);
+			this_point.posX = grid.x_px(this_point.suX);
+			this_point.posY = grid.y_px(this_point.suY);
 			this_point.draw();					
 		}	
 		
+		// Draw motor position indicator
+		updatePosition();
+		
+		// Draw position and velocity splines if data is available
 		if(spline_available){
 		    // If both of the coordinates have now been set, draw the point:
 		    for(int i = 0; i < spline_point_count * XY_SIZE; i += 2){
@@ -374,7 +550,7 @@ public class KeyframePlotter extends PApplet {
 		  	  if(i == spline_point_count * XY_SIZE - 2)
 		  		point(key_frames.get(key_frames.size() - 1).posX, key_frames.get(key_frames.size() - 1).posY);
 		  	  else
-		  		point(spline_point[i], spline_point[i + 1]);
+		  		point(grid.x_px(spline_point[i]), grid.y_px(spline_point[i + 1]));
 		    }
 		}
 		if(vel_available){
@@ -383,14 +559,43 @@ public class KeyframePlotter extends PApplet {
 		    	// draw the point:
 		  	  	strokeWeight(2);
 		  	  	stroke(0, 0, 255);
-		  	  	point(vel_point[i], vel_point[i + 1]);
+		  	  	point(grid.x_px(vel_point[i]), grid.y_px(vel_point[i + 1]));
 		    }			
 		}
+		
+		// If a program is running, draw a progress line
+		if(state == RUN){
+			stroke(98, 37, 178);
+			strokeWeight(3);			
+			line(grid.x_px(run_time_sec), grid.y_min_px, grid.x_px(run_time_sec), grid.y_max_px);
+		}
+		
+		// Draw the position indicator
+		stroke(0, 255, 0);
+		strokeWeight(10);
+		if(state == RUN)
+			point(grid.x_px(run_time_sec), grid.y_px(current_pos));
+		else
+			point(grid.x_zero_px, grid.y_px(current_pos));
 
 	}
-	
-	/** Input state functions **/
+	void setGridVals(){
+		x_interval = (int) (grid_scale_x.getVal() - grid_scale_x.getVal() % 5);
+		if(y_interval == 0)
+			y_interval = 5;
+		x_max = 11 * x_interval;
+		x_min = -x_interval;
+		
+		y_interval = (int) (grid_scale_y.getVal() - grid_scale_y.getVal() % 1000);
+		if(y_interval == 0)
+			y_interval = 500;
+		y_min = -10 * y_interval;
+		y_max = 10 * y_interval;
+	}
+		/** Input state functions **/
 	 
+
+	/*** Key Frame Point Functions***/
 	void getInput(){
 
 		// See if an existing key frame is being clicked
@@ -459,9 +664,8 @@ public class KeyframePlotter extends PApplet {
 		// Adding a key frame by clicking on the grid screen
 		if(_mouse_input == true){						
 			
-			posX = (int)grid.x() * grid.x_unit_px + grid.x_zero_px;
-			posY = mouseY;
-			
+			posX = (int)grid.x();
+			posY = grid.y();			
 		}
 		
 		// Adding a key frame by querying the motor's current position
@@ -470,9 +674,13 @@ public class KeyframePlotter extends PApplet {
 			println(key_frames.size());
 			// If this is the first key frame, reset the motor's home position
 			if(key_frames.size() == 1){
-				NMXCommand(1, 9);
-				posX = (int)grid.x_px(0);
-				posY = (int)grid.y_px(0);
+				for(int i = 1; i < MOTOR_COUNT+1; i++){
+					NMXCommand(i, 9);
+					NMXCommand(i, 16);
+				}
+				current_pos = 0;
+				posX = 0;
+				posY = 0;
 				print("posX: ");
 				println(posX);
 				print("posY: ");
@@ -482,17 +690,18 @@ public class KeyframePlotter extends PApplet {
 			// Otherwise check the motor's current position
 			else{
 				NMXCommand(1, 106);
-				float last_x = key_frames.get(key_frames.size() - 2).posX;
-				posX = (grid.x_max_px - last_x) / 4 + last_x;
-				posY = grid.y_px(parseResponse());
+				float last_x = key_frames.get(key_frames.size() - 2).suX;
+				posX = (grid.x_max - last_x) / 4 + last_x;
+				posY = parseResponse();
 				print("posX: ");
 				println(posX);
 				print("posY: ");
 				println(posY);
 			}			
 		}
-		
-		this_point.init("temp", posX, posY, kf_point_radius);
+		this_point.suX = posX;
+		this_point.suY = posY;
+		this_point.init("temp", grid.x_px(posX), grid.y_px(posY), kf_point_radius);
 		
 		// Re-order the points by position
 		Collections.sort(key_frames, new PointComparator());
@@ -520,31 +729,29 @@ public class KeyframePlotter extends PApplet {
 			// Set X position
 			// If this is not the first point
 			if(p_kf > 0)
-				x_last = (int)grid.x(key_frames.get(p_kf - 1).posX);			
+				x_last = (int) key_frames.get(p_kf - 1).suX;			
 			// If this is not the last point
 			if(p_kf < key_frames.size() - 1)
-				x_next = (int)grid.x(key_frames.get(p_kf + 1).posX);			
+				x_next = (int) key_frames.get(p_kf + 1).suX;			
 			// Move the X position if it's not crossing any other points and X axis isn't locked
 			if(x_this > x_last && x_this < x_next && !lock_x.clicked){
 				// Set the X position where a key frame would fall, not at the exact mouse position
-				this_point.posX = grid.x_px(x_this); // x_this * grid.x_unit_px + grid.x_zero_px;
+				this_point.suX = x_this; // x_this * grid.x_unit_px + grid.x_zero_px;
 			}
 			
 			// Set Y position
 			if(grid.overGridY() && !lock_y.clicked){
-				this_point.posY = mouseY;		
+				this_point.suY = grid.y();		
 			}		
 		}
 		else if(mouseButton == RIGHT){
 			key_frames.remove(p_kf);
+			spline_available = false;
+			vel_available = false;
 		}		
-
-	
-		//bounce.set();
 	}
 	
-	
-	/** Send state functions **/
+	/*** Send state functions ***/
 	
 	void sendData(){		
 		
@@ -553,10 +760,7 @@ public class KeyframePlotter extends PApplet {
 			message.draw("Com port not opened!");
 			state = GET_INPUT;
 			return;
-		}
-			
-		
-		final int FLUSH_COUNT = 0;	// Number of times to spam the controller before sending real info 
+		}		
 		
 		// Send key frame count / indicate start of transmission
 		println("Sending key frame count");
@@ -613,87 +817,9 @@ public class KeyframePlotter extends PApplet {
 		state = DRAW_POINTS;				
 	}
 	
-	void NMXCommand(int _sub_addr, int _command){
-		NMXCommand(_sub_addr, _command, 0, 0);	
-	}
-	
-	void NMXCommand(int _sub_addr, int _command, int _length, int _data){
 		
-		// Assemble command packet
-		String header = "0000000000FF";
-		String address = "03";		
-		String sub_addr = _sub_addr <= 15 ? "0" + Integer.toHexString(_sub_addr) : Integer.toHexString(_sub_addr);
-		String command = _command <= 15 ? "0" + Integer.toHexString(_command) : Integer.toHexString(_command);
-		String length = _length <= 15 ? "0" + Integer.toHexString(_length) : Integer.toHexString(_length);
-		String data = Integer.toHexString(_data).length()%2 != 0 ? "0" + Integer.toHexString(_data) : Integer.toHexString(_data);
-		String packet = header + address + sub_addr + command + length;			
 
-		// If the length is non-zero, then append the data
-		if(_length != 0){
-			// Make sure the data has any necessary leading zeros
-			if(data.length() / 2 != _length){
-				int leading_zero_byes = _length - (data.length()/2);
-				for(int i = 0; i < leading_zero_byes; i++){
-					data = "00" + data;
-				}
-			}
-			// Append to the packet
-			packet += data;
-		}		
-
-		//print("Assembled packet: ");
-		//println(packet);
-		
-		// Convert hex string to byte array
-		byte[] out_command = hexStringToByteArray(packet);
-		
-		// Send command
-		for(int i = 0; i < out_command.length; i++){		
-			port.write(out_command[i]);
-		}
-		
-		// Wait for response
-		final int TIMEOUT = 3000;
-		long time = millis();
-		while(true){
-			// Clear whatever is in the response string
-			response = "";
-			// Wait for response packet to show up in buffer
-			delay(10);
-			if(port.available() > 0){
-				print("NMX response: ");		
-				int size = port.available();
-				int[] in_byte = new int[size];
-				for(int i = 0; i < in_byte.length; i++){
-					in_byte[i] = port.read();
-					String debug = in_byte[i] <= 15 ? "0" + Integer.toHexString(in_byte[i]) : Integer.toHexString(in_byte[i]);
-					response = response + debug;
-					print(debug);
-					print(" ");
-				}
-				println("");	
-				return;
-			}						
-			// Eventually bail if it never shows up
-			if(millis() - time > TIMEOUT){
-				println("Timed out waiting for NMX response packet");
-				timed_out = true;
-				return;
-			}			
-		}	
-	}
-	
-	static byte[] hexStringToByteArray(String s){
-		int len = s.length();
-		byte[] data = new byte[len/2];
-		for(int i = 0; i < len; i += 2){
-			data[i/2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i+1), 16));
-		}
-		return data;
-	}
-	
-	
-	/** Draw state functions **/
+	/*** Draw state functions ***/
 	
 	void getSplinePoints(){		
 	
@@ -730,9 +856,9 @@ public class KeyframePlotter extends PApplet {
     	  println(in_val);
          
           if(i % 2 == 0)
-        	  spline_point[i] = grid.x_px(in_val);
+        	  spline_point[i] = in_val;
           else
-        	  spline_point[i] = grid.y_px(in_val);
+        	  spline_point[i] = in_val;
            
           }	  
        spline_available = true;
@@ -747,26 +873,192 @@ public class KeyframePlotter extends PApplet {
     	  NMXCommand(5, 104, INT_SIZE, i);
     	  if(timed_out)
 				return;
-    	  float in_val = parseResponse() / 10;		// This will be a float, so need to divide by 100 on master device side
+    	  float in_val = parseResponse() / 100;		// This will be a float, so need to divide by 100 on master device side
     	  print("in_val: ");
     	  println(in_val);
          
           
           vel_point[i*2] = spline_point[i * 2];          
-          vel_point[i*2 + 1] = grid.y_px(in_val);
+          vel_point[i*2 + 1] = in_val;
            
        }	  
        vel_available = true;
+       message.draw("Movement curve retrieval complete");
+	}
+	
+	/*** Run state functions***/
+	void runProgram() {
+		
+		// Update the run time vars
+		run_time = millis() - program_start_time;		
+		run_time_sec = run_time / MILLIS_PER_SEC;
+		
+		float speed = 0;
+		print("Current vel point: ");
+		println(cur_vel_pnt);
+		// Before movement starts
+		if(cur_vel_pnt == -1){
+			
+			// Turn on joystick mode							
+			println("Enabling joystick mode");
+			NMXCommand(0, 23, BYTE_SIZE, 1);
+			if(timed_out){
+				message.draw(TIMED_OUT);
+				return;
+			}
+			// Set movement vars
+			joystick_mode = true;
+			moving = true;
+			check_moving = false;			
+		}
+		
+		// If we haven't started moving or we've moved past the next update point
+		if(run_time_sec > vel_point[(cur_vel_pnt + 1) * 2] || cur_vel_pnt == -1){
+			// If this is the last point
+			if(cur_vel_pnt == spline_point_count-1)
+				speed = 0;
+			else{				
+				cur_vel_pnt++;
+				speed = vel_point[(cur_vel_pnt * 2) + 1];
+			}
+			// Send the NMX the updated speed
+			print("Speed: ");
+			println(speed);
+			println(Float.floatToIntBits(speed));			
+			NMXCommand(1, 13, FLOAT_SIZE, Float.floatToIntBits(speed), false);
+		}				
+		
+		// If this is the end of the program
+		if(cur_vel_pnt == spline_point_count-1){
+			moving = false;
+			println("Disabling joystick mode");
+			NMXCommand(0, 23, BYTE_SIZE, 0);
+			if(timed_out){
+				message.draw(TIMED_OUT);
+				return;
+			}
+			// Turn off joystick mode
+			state = GET_INPUT;
+		}
+	}
+	
+	/*** Communication functions ***/
+	
+	void NMXCommand(int _sub_addr, int _command){
+		NMXCommand(_sub_addr, _command, 0, 0);	
+	}
+	void NMXCommand(int _sub_addr, int _command, int _length, int _data){
+		NMXCommand(_sub_addr, _command, _length, _data, true);
+	}
+	// If _response is false, we won't wait for a response from the controller
+	void NMXCommand(int _sub_addr, int _command, int _length, int _data, boolean _response){
+		
+		// Assemble command packet
+		String header = "0000000000FF";
+		String address = "03";		
+		String sub_addr = _sub_addr <= 15 ? "0" + Integer.toHexString(_sub_addr) : Integer.toHexString(_sub_addr);
+		String command = _command <= 15 ? "0" + Integer.toHexString(_command) : Integer.toHexString(_command);
+		String length = _length <= 15 ? "0" + Integer.toHexString(_length) : Integer.toHexString(_length);
+		String data = Integer.toHexString(_data).length()%2 != 0 ? "0" + Integer.toHexString(_data) : Integer.toHexString(_data);
+		String packet = header + address + sub_addr + command + length;			
+		
+		// If the length is non-zero, then append the data
+		if(_length != 0){
+			// Make sure the data has any necessary leading zeros
+			if(data.length() / 2 != _length){
+				int leading_zero_byes = _length - (data.length()/2);
+				for(int i = 0; i < leading_zero_byes; i++){
+					data = "00" + data;
+				}
+			}
+			// Append to the packet
+			packet += data;
+		}		
+
+		print("Assembled packet: ");
+		println(packet);
+		
+		// Convert hex string to byte array
+		byte[] out_command = hexStringToByteArray(packet);
+		
+		// Send command
+		for(int i = 0; i < out_command.length; i++){		
+			port.write(out_command[i]);
+		}
+		
+		// The NMX doesn't generate responses in joystick mode
+		if(!_response)
+			return;
+		
+		// Wait for response
+		final int TIMEOUT = 3000;
+		long time = millis();
+		while(true){
+			// Clear whatever is in the response string
+			response = "";
+			// Wait for response packet to show up in buffer
+			delay(10);
+			if(port.available() > 8){
+				print("NMX response: ");		
+				int size = port.available();
+				int[] in_byte = new int[size];
+				for(int i = 0; i < in_byte.length; i++){
+					in_byte[i] = port.read();
+					String debug = in_byte[i] <= 15 ? "0" + Integer.toHexString(in_byte[i]) : Integer.toHexString(in_byte[i]);
+					response = response + debug;
+					print(debug);
+					print(" ");
+				}
+				println("");	
+				print("Response: ");
+				println(response);
+				return;
+			}						
+			// Eventually bail if it never shows up
+			if(millis() - time > TIMEOUT){
+				println("Timed out waiting for NMX response packet");
+				timed_out = true;
+				return;
+			}			
+		}	
+	}
+	
+	static byte[] hexStringToByteArray(String s){
+		int len = s.length();
+		byte[] data = new byte[len/2];
+		for(int i = 0; i < len; i += 2){
+			data[i/2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i+1), 16));
+		}
+		return data;
 	}
 	
 	float parseResponse(){
-		int length = Integer.decode("0x" + response.substring(18, 20));
-		int data_type = Integer.decode("0x" + response.substring(20, 22));		
-		long data = Long.decode("0x" + response.substring(22, response.length()));	
-
-		// Handle negative longs
-		if(data_type == 3 && Integer.decode("0x" + response.substring(22, 24)) == 255)
-			data = data - Long.decode("0xffffffff"); 
+	
+		//int length = Integer.decode("0x" + response.substring(18, 20));
+		int data_type = 7;
+		long data = 0;
+		try{
+			data_type = Integer.decode("0x" + response.substring(20, 22));
+			try{
+				data = Long.decode("0x" + response.substring(22, response.length()));
+				try{
+					// Handle negative longs
+					if(data_type == 3 && Integer.decode("0x" + response.substring(22, 24)) == 255)
+						data = data - Long.decode("0xffffffff");
+				}
+				catch(NumberFormatException e){
+					println("Error handling negative data value");
+				}
+			 
+			}
+			catch(NumberFormatException e){
+				println("Error parsing data");
+			}
+		}
+		catch(NumberFormatException e){
+			println("Error parsing data type");
+		}
+		
 		
 		switch(data_type){
 		// Byte
@@ -783,20 +1075,22 @@ public class KeyframePlotter extends PApplet {
 			break;
 		// float
 		case 5:
-			// This is an error because the NMX shouldn't actually be sending true floats
-			data = -5000;
+			// This is an error because the NMX shouldn't actually be sending true floats			
 			break;
 		// string
 		case 6:
-			// This is an error code, since a string can't convert to a float nicely
-			data = -5000;
+			// This is an error code, since a string can't convert to a float nicely			
+			break;
+		// error
+		case 7:
+			// This happens when the response can't be parsed			
 			break;
 		}
 
 		return data;
 	}
 	
-	/** Helper functions **/
+	/*** Helper functions ***/
 	
 	void updateMousePos() {		
 		graph_loc.draw(String.format("%.0f", grid.x()), String.format("%.1f", grid.y()));

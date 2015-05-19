@@ -14,6 +14,7 @@ public class Slider {
 	private PApplet p;	
 	
 	private boolean vertical, clicked, snap;
+	
 	private float 
 		s_length, s_thickness, 								// Slide Drawing parameters
 		s_x_max_px, s_x_min_px, s_x_mid_px,			 
@@ -23,6 +24,7 @@ public class Slider {
 		c_y_min_px, c_y_max_px, c_y_mid_px,
 		c_snap_percent,
 		min_val, max_val;									// Value output vars
+	
 	private int
 		s_r, s_g, s_b,	// Slider color vars  
 		c_r, c_g, c_b;	// Cursor color vars
@@ -45,8 +47,14 @@ public class Slider {
 		vertical = _vertical;
 		s_x_mid_px = _x_pos;
 		s_y_mid_px = _y_pos;
-		max_val = _max_val;
-		min_val = _min_val;
+		if(vertical){
+			max_val = _min_val;
+			min_val = _max_val;
+		}
+		else{
+			max_val = _max_val;
+			min_val = _min_val;
+		}
 		snap = _snap;
 		
 		// Set default slider color
@@ -129,10 +137,47 @@ public class Slider {
 		}
 	}
 	
+	/** Get Functions **/
+	
 	// Returns current slider value
-	public float val(){
+	public float getVal(){
 		return min_val + (c_slide_percent * (max_val - min_val));
 	}
+	
+	public float getXMin(){
+		return s_x_min_px;
+	}
+	
+	public float getXMid(){
+		return s_x_mid_px;
+	}
+	
+	public float getXMax(){
+		return s_x_max_px;
+	}
+	
+	public float getYMin(){
+		return s_y_min_px;
+	}
+	
+	public float getYMid(){
+		return s_y_mid_px;
+	}
+	
+	public float getYMax(){
+		return s_y_max_px;
+	}
+	
+	
+	/** Set Functions **/
+	
+	public void setSlidePercent(float _setting){
+		if(vertical)
+			c_slide_percent = 1 - _setting;
+		else
+			c_slide_percent = _setting;
+	}
+
 	
 	public void draw(){		
 		
