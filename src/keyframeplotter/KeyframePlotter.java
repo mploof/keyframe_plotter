@@ -97,9 +97,10 @@ public class KeyframePlotter extends PApplet {
 	
 	// KF and Spline vars
 	final int MAX_KF = 7;
-	int spline_point_count = 1000;
-	float[] spline_point;
-	float[] vel_point;
+	int spline_point_count = 50;
+	float[] spline_abscissa;
+	float[] spline_pos_y;	
+	float[] spline_vel_y;
 	boolean spline_available = false;
 	boolean vel_available = false;
 	
@@ -202,7 +203,6 @@ public class KeyframePlotter extends PApplet {
 				break;
 			case DRAW_POINTS:
 				getSplinePoints();
-				getVelPoints();
 				state = GET_INPUT;
 				break;
 			case RUN:
@@ -543,23 +543,23 @@ public class KeyframePlotter extends PApplet {
 		// Draw position and velocity splines if data is available
 		if(spline_available){
 		    // If both of the coordinates have now been set, draw the point:
-		    for(int i = 0; i < spline_point_count * XY_SIZE; i += 2){
-		        // draw the point:
-		  	  strokeWeight(2);
-		  	  stroke(255, 0, 0);
-		  	  if(i == spline_point_count * XY_SIZE - 2)
-		  		point(key_frames.get(key_frames.size() - 1).posX, key_frames.get(key_frames.size() - 1).posY);
-		  	  else
-		  		point(grid.x_px(spline_point[i]), grid.y_px(spline_point[i + 1]));
-		    }
+		    for(int i = 0; i < spline_point_count; i ++){
+		    	// draw the point:
+		  	  	strokeWeight(2);
+		  	  	stroke(255, 0, 0);
+		  	  	if(i == spline_point_count * XY_SIZE - 2)
+		  	  		point(key_frames.get(key_frames.size() - 1).posX, key_frames.get(key_frames.size() - 1).posY);
+		  	  	else
+		  	  		point(grid.x_px(spline_abscissa[i]), grid.y_px(spline_pos_y[i]));
+		    	}
 		}
 		if(vel_available){
 			// If both of the coordinates have now been set, draw the point:
-		    for(int i = 0; i < spline_point_count * XY_SIZE; i += 2){
+		    for(int i = 0; i < spline_point_count; i++){
 		    	// draw the point:
 		  	  	strokeWeight(2);
 		  	  	stroke(0, 0, 255);
-		  	  	point(grid.x_px(vel_point[i]), grid.y_px(vel_point[i + 1]));
+		  	  	point(grid.x_px(spline_abscissa[i]), grid.y_px(spline_vel_y[i]));
 		    }			
 		}
 		
@@ -768,49 +768,66 @@ public class KeyframePlotter extends PApplet {
 		if(timed_out)
 			return;
 		
-		
+		// Select axis 0
+		NMXCommand(5, 11, INT_SIZE, 0);
+		if(timed_out)
+			return;
+				
 		// Verify the frame count
 		println("Verifying key frame count");
 		NMXCommand(5, 100);
 		if(timed_out)
 			return;
+		print("Key frame count set: ");
+		println(parseResponse());
 		
 		// **** Send key frame points*** //		
 		
-		// Loop through each key frame point
-		println("Sending key frame point locations");
+		// Set the abscissas of the key frame points
 		for(int i = 0; i < key_frames.size(); i++){
-			for(int j = 0; j < XY_SIZE; j++){
-				
-				// Find position of current point
-				float temp_val;
-				if(j == 0)
-					temp_val = grid.x(key_frames.get(i).posX);
-				else
-					temp_val = grid.y(key_frames.get(i).posY);
-				
-				print("Send value: ");
-				println(temp_val);
-				
-				// Convert to intBits
-				int out_val = Float.floatToIntBits(temp_val);				
-				
-				// Send data packet
-				NMXCommand(5, 11, FLOAT_SIZE, out_val);			
-				if(timed_out)
-					return;
-			}
+			float temp_val = key_frames.get(i).suX;
+			int out_val = Float.floatToIntBits(temp_val);
+			print("Abscissa ");
+			print(i);
+			print(" value: ");
+			println(temp_val);
+			
+			NMXCommand(5, 12, FLOAT_SIZE, out_val);
+			if(timed_out)
+				return;
 		}
+		
+		// Set the positions of the key frame points
+		for(int i = 0; i < key_frames.size(); i++){
+			float temp_val = key_frames.get(i).suY;
+			int out_val = Float.floatToIntBits(temp_val);
+			print("Position ");
+			print(i);
+			print(" value: ");
+			println(temp_val);
+			
+			NMXCommand(5, 13, FLOAT_SIZE, out_val);
+			if(timed_out)
+				return;
+		}
+				
+		// Set the velocities of the key frame points
+		for(int i = 0; i < key_frames.size(); i++){
+			float temp_val = 0;
+			int out_val = Float.floatToIntBits(temp_val);
+			print("Velocity ");
+			print(i);
+			print(" value: ");
+			println(temp_val);
+			
+			NMXCommand(5, 14, FLOAT_SIZE, out_val);
+			if(timed_out)
+				return;
+		}		
 		
 		// End the transmission
 		println("Ending key frame point transmission");
 		NMXCommand(5, 10, INT_SIZE, 0);
-		if(timed_out)
-			return;
-		
-		// Check point count again
-		println("Double checking point count");
-		NMXCommand(5, 100);
 		if(timed_out)
 			return;
 		
@@ -821,74 +838,77 @@ public class KeyframePlotter extends PApplet {
 
 	/*** Draw state functions ***/
 	
-	void getSplinePoints(){		
-	
-		spline_point = new float[spline_point_count * XY_SIZE];
+	void getSplinePoints(){
+			
+		spline_abscissa = new float[spline_point_count];
+		spline_pos_y = new float[spline_point_count];
+		spline_vel_y = new float[spline_point_count];
 		
-		// Set number of spline points to be retrieved
-		println("Setting curve point count");
-		NMXCommand(5, 12, INT_SIZE, spline_point_count);
-		if(timed_out)
-			return;
+		float increment = key_frames.get(key_frames.size() - 1).suX / (spline_point_count - 1);
 		
-	  	// Check number of spline points to be retrieved
-	    println("Getting curve point count");
-	    NMXCommand(5, 101);
-	    if(timed_out)
-			return;
-		int spline_point_count = (int)parseResponse();	    
-	    
-		// Signal start of point retrieval
-		println("Signaling start of point retrieval");
-		NMXCommand(5, 102);
-		println("done");
-		if(timed_out)
-			return;
-		println("blah");
+		// Populate abscissa array
+		println("Populating abscissas");
+		for(int i = 0; i < spline_point_count; i++){
+			spline_abscissa[i] = i * increment;
+		}		
 		
-       for(int i = 0; i < spline_point_count * XY_SIZE ; i++){
-	      println("Retrieval loop");
-    	  NMXCommand(5, 103, INT_SIZE, i);
-    	  if(timed_out)
+		// Request motor positions
+		println("Position Retrieval loop");
+        for(int i = 0; i < spline_point_count; i++){
+        	
+        	float x_request = i * increment;
+        	int out_val = Float.floatToIntBits(x_request);
+        	NMXCommand(5, 102, FLOAT_SIZE, out_val);
+			if(timed_out)
 				return;
-    	  float in_val = parseResponse() / 100;		// This will be a float, so need to divide by 100 on master device side
-    	  print("in_val: ");
-    	  println(in_val);
-         
-          if(i % 2 == 0)
-        	  spline_point[i] = in_val;
-          else
-        	  spline_point[i] = in_val;
-           
-          }	  
-       spline_available = true;
-	}
+			  
+			float in_val = parseResponse() / 100;		// This will be a float, so need to divide by 100 on master device side
+			spline_pos_y[i] = in_val;
+			  
+			print("Position ");
+			print(i);
+			print(" :");
+			println(in_val);		   
+        }	  
+        
+        // Request motor velocities
+ 		println("Position Retrieval loop");
+        for(int i = 0; i < spline_point_count; i++){		
+        	
+        	float x_request = i * increment;
+        	int out_val = Float.floatToIntBits(x_request);
+        	NMXCommand(5, 103, FLOAT_SIZE, out_val);
+        	if(timed_out)
+        		return;
+ 		  
+        	float in_val = parseResponse() / 100;		// This will be a float, so need to divide by 100 on master device side
+        	spline_vel_y[i] = in_val;
+ 		  
+	 		print("Velocity ");
+	 		print(i);
+	 		print(" :");
+	 		println(in_val);		   
+        }	  
+        
+        spline_available = true;
+        vel_available = true;
+        message.draw("Movement curve retrieval complete");
+	}	
 	
-	void getVelPoints(){		
-
-		vel_point = new float[spline_point_count * XY_SIZE];
-		
-       for(int i = 0; i < spline_point_count; i++){
-	        	    	
-    	  NMXCommand(5, 104, INT_SIZE, i);
-    	  if(timed_out)
-				return;
-    	  float in_val = parseResponse() / 100;		// This will be a float, so need to divide by 100 on master device side
-    	  print("in_val: ");
-    	  println(in_val);
-         
-          
-          vel_point[i*2] = spline_point[i * 2];          
-          vel_point[i*2 + 1] = in_val;
-           
-       }	  
-       vel_available = true;
-       message.draw("Movement curve retrieval complete");
-	}
 	
 	/*** Run state functions***/
 	void runProgram() {
+						
+		if(state != RUN){
+			state = RUN;
+			NMXCommand(5, 20);
+		}
+		else{
+			run_time = millis() - program_start_time;		
+			run_time_sec = run_time / MILLIS_PER_SEC;
+		}
 		
+		/*
 		// Update the run time vars
 		run_time = millis() - program_start_time;		
 		run_time_sec = run_time / MILLIS_PER_SEC;
@@ -940,6 +960,7 @@ public class KeyframePlotter extends PApplet {
 			// Turn off joystick mode
 			state = GET_INPUT;
 		}
+		*/
 	}
 	
 	/*** Communication functions ***/
