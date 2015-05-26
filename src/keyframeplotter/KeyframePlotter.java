@@ -42,6 +42,8 @@ public class KeyframePlotter extends PApplet {
 	
 	// Lower tool bar
 	Slider grid_scale_x = new Slider(this);
+	final int min_x_inc = 1;
+	final int max_x_inc = 10;
 	Button clear_kf = new Button(this);
 	Button go_home = new Button(this);
 	Button start_program = new Button(this);
@@ -49,6 +51,8 @@ public class KeyframePlotter extends PApplet {
 	
 	// Left side tool bar
 	Slider grid_scale_y = new Slider(this);
+	final int min_y_inc = 1000;
+	final int max_y_inc = 10000;
 	
 	// Graphics variables
 	int bgnd_r = 114;
@@ -97,7 +101,7 @@ public class KeyframePlotter extends PApplet {
 	
 	// KF and Spline vars
 	final int MAX_KF = 7;
-	int spline_point_count = 50;
+	int spline_point_count = 100;
 	float[] spline_abscissa;
 	float[] spline_pos_y;	
 	float[] spline_vel_y;
@@ -145,7 +149,7 @@ public class KeyframePlotter extends PApplet {
 		
 		// Initialize left side toolbar
 		int grid_scale_thickness = 15;		
-		grid_scale_y.init(grid.height, grid_scale_thickness, true, grid_left_margin / 2, grid.y_mid_px, 100, 10000, false);
+		grid_scale_y.init(grid.height, grid_scale_thickness, true, grid_left_margin / 2, grid.y_mid_px, min_y_inc, max_y_inc, false);
 		grid_scale_y.setSlidePercent(0);
 		grid_scale_y.draw();
 		
@@ -156,7 +160,7 @@ public class KeyframePlotter extends PApplet {
 		title.init("Key Frame Editor", width/2, 25, 200, i_height);
 		title.draw();
 
-		grid_scale_x.init(grid.width, grid_scale_thickness, false, grid.x_mid_px, grid.y_max_px + i_margin + grid_scale_thickness/2, 5, 100, false);
+		grid_scale_x.init(grid.width, grid_scale_thickness, false, grid.x_mid_px, grid.y_max_px + i_margin + grid_scale_thickness/2, min_x_inc, max_x_inc, false);
 		grid_scale_x.setSlidePercent(0);
 		grid_scale_x.draw();
 		
@@ -295,10 +299,10 @@ public class KeyframePlotter extends PApplet {
 			// Get the current motor position
 			NMXCommand(1, 106);	
 			current_pos = parseResponse();
-			print("Current grid position: ");
-			println(current_pos);
-			print("Current px position: ");
-			println(grid.y_px(current_pos));
+			//print("Current grid position: ");
+			//println(current_pos);
+			//print("Current px position: ");
+			//println(grid.y_px(current_pos));
 			if(check_moving){
 				// Check whether the motors have stopped moving
 				NMXCommand(1, 107);
@@ -435,13 +439,15 @@ public class KeyframePlotter extends PApplet {
 			return;
 		}
 		println("********** Starting program **********");
-		state = RUN;
 		cur_vel_pnt = -1;		
 		program_start_time = millis();
+		runProgram();
 	}
 	void stopMotorsAction(){
-		for(int i = 0; i < MOTOR_COUNT; i++)
+		for(int i = 0; i < MOTOR_COUNT; i++){
 			NMXCommand(i, 4);
+			moving = false;
+		}
 		
 		// Go back to input state (in case a program is running);
 		state = GET_INPUT;
@@ -580,13 +586,13 @@ public class KeyframePlotter extends PApplet {
 
 	}
 	void setGridVals(){
-		x_interval = (int) (grid_scale_x.getVal() - grid_scale_x.getVal() % 5);
+		x_interval = (int) (grid_scale_x.getVal() - grid_scale_x.getVal() % min_x_inc);
 		if(y_interval == 0)
 			y_interval = 5;
 		x_max = 11 * x_interval;
 		x_min = -x_interval;
 		
-		y_interval = (int) (grid_scale_y.getVal() - grid_scale_y.getVal() % 1000);
+		y_interval = (int) (grid_scale_y.getVal() - grid_scale_y.getVal() % min_y_inc);
 		if(y_interval == 0)
 			y_interval = 500;
 		y_min = -10 * y_interval;
@@ -858,6 +864,8 @@ public class KeyframePlotter extends PApplet {
         	
         	float x_request = i * increment;
         	int out_val = Float.floatToIntBits(x_request);
+        	print("Requested location: ");
+        	println(x_request);
         	NMXCommand(5, 102, FLOAT_SIZE, out_val);
 			if(timed_out)
 				return;
@@ -899,68 +907,25 @@ public class KeyframePlotter extends PApplet {
 	/*** Run state functions***/
 	void runProgram() {
 						
+		// Start the program on the NMX
 		if(state != RUN){
+			println("Sending start command");
 			state = RUN;
 			NMXCommand(5, 20);
+			moving = true;
 		}
+		
+		// Update the running time
 		else{
 			run_time = millis() - program_start_time;		
 			run_time_sec = run_time / MILLIS_PER_SEC;
-		}
-		
-		/*
-		// Update the run time vars
-		run_time = millis() - program_start_time;		
-		run_time_sec = run_time / MILLIS_PER_SEC;
-		
-		float speed = 0;
-		print("Current vel point: ");
-		println(cur_vel_pnt);
-		// Before movement starts
-		if(cur_vel_pnt == -1){
-			
-			// Turn on joystick mode							
-			println("Enabling joystick mode");
-			NMXCommand(0, 23, BYTE_SIZE, 1);
-			if(timed_out){
-				message.draw(TIMED_OUT);
-				return;
+			// Check whether the program has finished
+			if(run_time_sec > key_frames.get(key_frames.size()-1).suX){
+				moving = false;
+				state = GET_INPUT;
 			}
-			// Set movement vars
-			joystick_mode = true;
-			moving = true;
-			check_moving = false;			
 		}
-		
-		// If we haven't started moving or we've moved past the next update point
-		if(run_time_sec > vel_point[(cur_vel_pnt + 1) * 2] || cur_vel_pnt == -1){
-			// If this is the last point
-			if(cur_vel_pnt == spline_point_count-1)
-				speed = 0;
-			else{				
-				cur_vel_pnt++;
-				speed = vel_point[(cur_vel_pnt * 2) + 1];
-			}
-			// Send the NMX the updated speed
-			print("Speed: ");
-			println(speed);
-			println(Float.floatToIntBits(speed));			
-			NMXCommand(1, 13, FLOAT_SIZE, Float.floatToIntBits(speed), false);
-		}				
-		
-		// If this is the end of the program
-		if(cur_vel_pnt == spline_point_count-1){
-			moving = false;
-			println("Disabling joystick mode");
-			NMXCommand(0, 23, BYTE_SIZE, 0);
-			if(timed_out){
-				message.draw(TIMED_OUT);
-				return;
-			}
-			// Turn off joystick mode
-			state = GET_INPUT;
-		}
-		*/
+				
 	}
 	
 	/*** Communication functions ***/
@@ -1031,8 +996,6 @@ public class KeyframePlotter extends PApplet {
 					print(" ");
 				}
 				println("");	
-				print("Response: ");
-				println(response);
 				return;
 			}						
 			// Eventually bail if it never shows up
@@ -1078,6 +1041,9 @@ public class KeyframePlotter extends PApplet {
 		}
 		catch(NumberFormatException e){
 			println("Error parsing data type");
+		}
+		catch(StringIndexOutOfBoundsException e){
+			println("Out of bounds!!!");
 		}
 		
 		
