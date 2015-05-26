@@ -11,6 +11,8 @@ import processing.serial.*;
 public class KeyframePlotter extends PApplet {	
 	
 	ArrayList<Button> key_frames = new ArrayList<Button>();	// List of buttons that will represent key frames
+	ArrayList<ControlHandle> control_handles = 
+			new ArrayList<ControlHandle>();
 	Serial port;        									// The serial port
 	Bounce bounce = new Bounce(this);						// Mouse debouncing object
 	int grid_top_margin = 50;
@@ -465,9 +467,10 @@ public class KeyframePlotter extends PApplet {
 		
 		for(int i = 0; i < size; i++){
 			Button this_point = key_frames.get(i);
+			ControlHandle this_handle = control_handles.get(i);
 			xn[i] = this_point.suX;
 			fn[i] = this_point.suY;
-			dn[i] = 0;
+			dn[i] = this_handle.getSlope();
 		}
 		
 		spline_abscissa = new float[spline_point_count];
@@ -574,14 +577,17 @@ public class KeyframePlotter extends PApplet {
 		grid.draw();
 		updateMousePos();
 		
-		// Draw key frame points
+		// Draw key frame points and control handles
 		for(int i = 0; i < key_frames.size(); i++){			
 			Button this_point = key_frames.get(i);			
 			this_point.label = Integer.toString(i + 1);
 			this_point.posX = grid.x_px(this_point.suX);
 			this_point.posY = grid.y_px(this_point.suY);
-			this_point.draw();					
-		}	
+			this_point.draw();
+			ControlHandle this_handle = control_handles.get(i);
+			this_handle.setLoc(this_point.posX, this_point.posY);
+			this_handle.draw();
+		}		
 		
 		// Update the spline calculation
 		if(key_frames.size() >= 2)
@@ -628,6 +634,7 @@ public class KeyframePlotter extends PApplet {
 			point(grid.x_zero_px, grid.y_px(current_pos));
 
 	}
+	
 	void setGridVals(){
 		x_interval = (int) (grid_scale_x.getVal() - grid_scale_x.getVal() % min_x_inc);
 		if(y_interval == 0)
@@ -641,25 +648,44 @@ public class KeyframePlotter extends PApplet {
 		y_min = -10 * y_interval;
 		y_max = 10 * y_interval;
 	}
-		/** Input state functions **/
+	
+	/** Input state functions **/
 	 
-
-	/*** Key Frame Point Functions***/
 	void getInput(){
+		
+		// Check if any key frame point is already clicked
+		boolean kf_clicked = false;
+		
+		for(int i = 0; i < key_frames.size(); i++){
+			Button this_point = key_frames.get(i);
+			if(this_point.clicked == true){				
+				kf_clicked = true;
+				break;
+			}
+		}
+		
+		// Check if a control handle is being dragged
+		if(!kf_clicked){
+			for(int i = 0; i < key_frames.size(); i++){
+				ControlHandle this_handle = control_handles.get(i);
+					if(this_handle.update() == true)
+						return;			
+			}		
+		}
 
 		// See if an existing key frame is being clicked
 		int cur_kf = overKF();
 
 		// If so, modify it
-		if(cur_kf > -1){
+		if(cur_kf > 0){
 			modifyKF(cur_kf);
 		}
 		// Otherwise, add a new point
-		else if(grid.overGrid() && cur_kf == -1 && bounce.get() == false){
-			//println("Adding key frame");
-			addKF(true);
-		}
+		else if(grid.overGrid() && cur_kf == -1 && bounce.get() == false){			
+				addKF(true);
+			}
 	}
+	
 	
 	int overKF(){
 		
@@ -705,7 +731,8 @@ public class KeyframePlotter extends PApplet {
 		
 		// Add a new button object to the key frame object array and then create a working reference
 		key_frames.add(new Button(this));
-		Button this_point = key_frames.get(key_frames.size() - 1);
+		control_handles.add(new ControlHandle(this, grid));
+		Button this_point = key_frames.get(key_frames.size() - 1);		
 		
 		float posX;
 		float posY;
@@ -794,6 +821,7 @@ public class KeyframePlotter extends PApplet {
 			spline_available = false;
 		}		
 		data_sent = false;
+		message.draw("");
 	}
 	
 	/*** Send state functions ***/
@@ -858,7 +886,7 @@ public class KeyframePlotter extends PApplet {
 				
 		// Set the velocities of the key frame points
 		for(int i = 0; i < key_frames.size(); i++){
-			float temp_val = 0;
+			float temp_val = control_handles.get(i).getSlope();
 			int out_val = Float.floatToIntBits(temp_val);
 			print("Velocity ");
 			print(i);
@@ -881,8 +909,6 @@ public class KeyframePlotter extends PApplet {
 		message.draw("Ready to start program!");
 	}
 	
-		
-
 	/*** Draw state functions ***/
 	
 	void getSplinePoints(){
