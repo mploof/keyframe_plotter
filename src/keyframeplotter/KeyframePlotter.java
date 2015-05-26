@@ -100,13 +100,14 @@ public class KeyframePlotter extends PApplet {
 	boolean check_moving = false;
 	
 	// KF and Spline vars
-	final int MAX_KF = 7;
-	int spline_point_count = 100;
+	final int MAX_KF = 15;
+	int spline_point_count = 4000;
 	float[] spline_abscissa;
 	float[] spline_pos_y;	
 	float[] spline_vel_y;
 	boolean spline_available = false;
-	boolean vel_available = false;
+	boolean data_sent = false;
+	
 	
 	// Timing vars
 	long check_time = millis();
@@ -117,6 +118,9 @@ public class KeyframePlotter extends PApplet {
 	float run_time_sec = 0;
 	final float MILLIS_PER_SEC = 1000;
 	int cur_vel_pnt = -1;
+	
+	// Spline interpolation
+	HermiteSpline hermite = new HermiteSpline(this);
 	
 	
 	public void setup() {
@@ -132,11 +136,12 @@ public class KeyframePlotter extends PApplet {
 		grid.draw();
 		
 		// Initialize buttons and indicators in right toolbar
-		float b_width = 90;
-		float b_height = 50;
+		int b_count = 8;
 		float b_margin = 10;
+		float b_width = 90;
+		float b_height = (grid.height - (b_count - 1) * b_margin) / b_count;		
 		float b_offset = b_margin + b_height/2;
-		graph_loc.init("Xg", "Yg", width - (75/2) - 15, (50/2) + grid.y_min_px, b_width, b_height);
+		graph_loc.init("Xg", "Yg", width - (75/2) - 15, (b_height/2) + grid.y_min_px, b_width, b_height);
 		mouse_loc.init("Xm", "Ym", graph_loc.posX, graph_loc.y_max_px + b_offset, b_width, b_height);				
 		connect.init("Close Port", graph_loc.posX, mouse_loc.y_max_px + b_offset, b_width, b_height);
 		mem_check.init("Mem Check", graph_loc.posX, connect.y_max_px + b_offset, b_width, b_height);
@@ -171,9 +176,10 @@ public class KeyframePlotter extends PApplet {
 		slider.draw();		
 		
 		// Initialize lower toolbar buttons
-		float lt_width = 100;
+		int lt_count = 4;
 		float lt_height = 50;
 		float lt_margin = 10;
+		float lt_width = (grid.width - (lt_count - 1) * lt_margin) / lt_count;		
 		float lt_offset = lt_margin + lt_width/2;
 		float lt_y_pos = slider.getYMax() + lt_height/2 + lt_margin;
 		clear_kf.init("Clear KFs", slider.getXMin() + lt_width / 2, lt_y_pos, lt_width, lt_height);			
@@ -299,10 +305,6 @@ public class KeyframePlotter extends PApplet {
 			// Get the current motor position
 			NMXCommand(1, 106);	
 			current_pos = parseResponse();
-			//print("Current grid position: ");
-			//println(current_pos);
-			//print("Current px position: ");
-			//println(grid.y_px(current_pos));
 			if(check_moving){
 				// Check whether the motors have stopped moving
 				NMXCommand(1, 107);
@@ -370,7 +372,7 @@ public class KeyframePlotter extends PApplet {
 				return;
 			}
 			println("Send clicked");
-			message.draw("Retrieving movement curve, please wait");
+			message.draw("Sending key frame data to NMX");
 			send.colorFill(20, 20, 20);
 			send.colorText(200, 200, 200);			
 			state = SEND_DATA;
@@ -420,9 +422,9 @@ public class KeyframePlotter extends PApplet {
 		clear_kf.draw();
 		key_frames.clear();
 		spline_available = false;
-		vel_available = false;
 		message.draw("Key frames cleared");
 	}	
+	
 	void goHomeAction(){
 		NMXCommand(0, 25);
 		moving = true;
@@ -434,8 +436,8 @@ public class KeyframePlotter extends PApplet {
 			message.draw("Can't start program while COM port is closed");
 			return;
 		}
-		else if(!spline_available || !vel_available){
-			message.draw("Must calculate movement curves before starting program");
+		else if(!data_sent){
+			message.draw("Must send key frame data to NMX before running program");
 			return;
 		}
 		println("********** Starting program **********");
@@ -443,6 +445,7 @@ public class KeyframePlotter extends PApplet {
 		program_start_time = millis();
 		runProgram();
 	}
+	
 	void stopMotorsAction(){
 		for(int i = 0; i < MOTOR_COUNT; i++){
 			NMXCommand(i, 4);
@@ -451,6 +454,43 @@ public class KeyframePlotter extends PApplet {
 		
 		// Go back to input state (in case a program is running);
 		state = GET_INPUT;
+	}
+	
+	void updateSpline(){
+		
+		int size = key_frames.size();
+		float xn[] = new float[size];
+		float fn[] = new float[size];
+		float dn[] = new float[size];
+		
+		for(int i = 0; i < size; i++){
+			Button this_point = key_frames.get(i);
+			xn[i] = this_point.suX;
+			fn[i] = this_point.suY;
+			dn[i] = 0;
+		}
+		
+		spline_abscissa = new float[spline_point_count];
+		spline_pos_y= new float[spline_point_count];
+		spline_vel_y = new float[spline_point_count];
+				
+		float interval = key_frames.get(key_frames.size()-1).suX / (float)(spline_point_count - 1);
+				
+		hermite.init(xn, fn, dn);
+		for(int i = 0; i < spline_point_count; i++){
+			
+			float location = (float)i * interval;
+			
+			// Don't exceed the maximum x position due to rounding
+			if(location > key_frames.get(key_frames.size()-1).suX)
+				location = key_frames.get(key_frames.size()-1).suX;
+			
+			hermite.cubic_spline_value((float)i * interval);
+			spline_abscissa[i] = location;
+			spline_pos_y[i] =  hermite.getPos();
+			spline_vel_y[i] =  hermite.getVel();			
+		}
+		spline_available = true;		
 	}
 	
 	void checkButtons(){
@@ -543,6 +583,10 @@ public class KeyframePlotter extends PApplet {
 			this_point.draw();					
 		}	
 		
+		// Update the spline calculation
+		if(key_frames.size() >= 2)
+			updateSpline();
+		
 		// Draw motor position indicator
 		updatePosition();
 		
@@ -557,10 +601,9 @@ public class KeyframePlotter extends PApplet {
 		  	  		point(key_frames.get(key_frames.size() - 1).posX, key_frames.get(key_frames.size() - 1).posY);
 		  	  	else
 		  	  		point(grid.x_px(spline_abscissa[i]), grid.y_px(spline_pos_y[i]));
-		    	}
-		}
-		if(vel_available){
-			// If both of the coordinates have now been set, draw the point:
+		    	}	
+
+		    // If both of the coordinates have now been set, draw the point:
 		    for(int i = 0; i < spline_point_count; i++){
 		    	// draw the point:
 		  	  	strokeWeight(2);
@@ -667,43 +710,39 @@ public class KeyframePlotter extends PApplet {
 		float posX;
 		float posY;
 		
+		// If this is the first key frame, reset the motor's home position
+		if(key_frames.size() == 1){
+			for(int i = 1; i < MOTOR_COUNT+1; i++){
+				NMXCommand(i, 9);
+				NMXCommand(i, 16);
+			}
+			current_pos = 0;
+			posX = 0;
+			posY = 0;
+			print("posX: ");
+			println(posX);
+			print("posY: ");
+			println(posY);			
+		}		
 		// Adding a key frame by clicking on the grid screen
-		if(_mouse_input == true){						
-			
+		else if(_mouse_input == true){						
 			posX = (int)grid.x();
-			posY = grid.y();			
-		}
-		
+			posY = grid.y();		
+		}		
 		// Adding a key frame by querying the motor's current position
 		else{
 			print("Key frames: ");
 			println(key_frames.size());
-			// If this is the first key frame, reset the motor's home position
-			if(key_frames.size() == 1){
-				for(int i = 1; i < MOTOR_COUNT+1; i++){
-					NMXCommand(i, 9);
-					NMXCommand(i, 16);
-				}
-				current_pos = 0;
-				posX = 0;
-				posY = 0;
-				print("posX: ");
-				println(posX);
-				print("posY: ");
-				println(posY);
-				
-			}
-			// Otherwise check the motor's current position
-			else{
-				NMXCommand(1, 106);
-				float last_x = key_frames.get(key_frames.size() - 2).suX;
-				posX = (grid.x_max - last_x) / 4 + last_x;
-				posY = parseResponse();
-				print("posX: ");
-				println(posX);
-				print("posY: ");
-				println(posY);
-			}			
+			
+			// Check the motor's current position		
+			NMXCommand(1, 106);
+			float last_x = key_frames.get(key_frames.size() - 2).suX;
+			posX = (grid.x_max - last_x) / 4 + last_x;
+			posY = parseResponse();
+			print("posX: ");
+			println(posX);
+			print("posY: ");
+			println(posY);					
 		}
 		this_point.suX = posX;
 		this_point.suY = posY;
@@ -753,8 +792,8 @@ public class KeyframePlotter extends PApplet {
 		else if(mouseButton == RIGHT){
 			key_frames.remove(p_kf);
 			spline_available = false;
-			vel_available = false;
 		}		
+		data_sent = false;
 	}
 	
 	/*** Send state functions ***/
@@ -837,7 +876,9 @@ public class KeyframePlotter extends PApplet {
 		if(timed_out)
 			return;
 		
-		state = DRAW_POINTS;				
+		data_sent = true;		
+		state = GET_INPUT;
+		message.draw("Ready to start program!");
 	}
 	
 		
@@ -899,7 +940,6 @@ public class KeyframePlotter extends PApplet {
         }	  
         
         spline_available = true;
-        vel_available = true;
         message.draw("Movement curve retrieval complete");
 	}	
 	
