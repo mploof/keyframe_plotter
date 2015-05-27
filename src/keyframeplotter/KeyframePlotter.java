@@ -9,8 +9,7 @@ import processing.serial.*;
 
 
 public class KeyframePlotter extends PApplet {	
-	
-	ArrayList<Button> key_frames = new ArrayList<Button>();	// List of buttons that will represent key frames
+		
 	ArrayList<ControlHandle> control_handles = 
 			new ArrayList<ControlHandle>();
 	Serial port;        									// The serial port
@@ -102,14 +101,13 @@ public class KeyframePlotter extends PApplet {
 	boolean check_moving = false;
 	
 	// KF and Spline vars
-	final int MAX_KF = 15;
+	final int MAX_KF = 20;
 	int spline_point_count = 4000;
 	float[] spline_abscissa;
 	float[] spline_pos_y;	
 	float[] spline_vel_y;
 	boolean spline_available = false;
-	boolean data_sent = false;
-	
+	boolean data_sent = false;	
 	
 	// Timing vars
 	long check_time = millis();
@@ -212,10 +210,6 @@ public class KeyframePlotter extends PApplet {
 				break;
 			case SEND_DATA:
 				sendData();				
-				break;
-			case DRAW_POINTS:
-				getSplinePoints();
-				state = GET_INPUT;
 				break;
 			case RUN:
 				runProgram();
@@ -365,12 +359,8 @@ public class KeyframePlotter extends PApplet {
 	
 	void sendAction(){
 		if(port_open){
-			if(key_frames.size() < 2){
+			if(control_handles.size() < 2){
 				message.draw("Must have at least two keyframes");
-				return;
-			}
-			if(key_frames.size() == 3){
-				message.draw("Doesn't work with three key frames. Not sure why...");
 				return;
 			}
 			println("Send clicked");
@@ -422,7 +412,7 @@ public class KeyframePlotter extends PApplet {
 		clear_kf.colorFill(20, 20, 20);
 		clear_kf.colorText(200, 200, 200);
 		clear_kf.draw();
-		key_frames.clear();
+		control_handles.clear();
 		spline_available = false;
 		message.draw("Key frames cleared");
 	}	
@@ -458,26 +448,24 @@ public class KeyframePlotter extends PApplet {
 		state = GET_INPUT;
 	}
 	
-	void updateSpline(){
-		
-		int size = key_frames.size();
+	void updateSpline(){		
+		int size = control_handles.size();
 		float xn[] = new float[size];
 		float fn[] = new float[size];
 		float dn[] = new float[size];
 		
-		for(int i = 0; i < size; i++){
-			Button this_point = key_frames.get(i);
+		for(int i = 0; i < size; i++){			
 			ControlHandle this_handle = control_handles.get(i);
-			xn[i] = this_point.suX;
-			fn[i] = this_point.suY;
-			dn[i] = this_handle.getSlope();
+			xn[i] = this_handle.getGridX();
+			fn[i] = this_handle.getGridY();
+			dn[i] = this_handle.getGridSlope();
 		}
 		
 		spline_abscissa = new float[spline_point_count];
 		spline_pos_y= new float[spline_point_count];
 		spline_vel_y = new float[spline_point_count];
 				
-		float interval = key_frames.get(key_frames.size()-1).suX / (float)(spline_point_count - 1);
+		float interval = control_handles.get(control_handles.size()-1).getGridX() / (float)(spline_point_count - 1);
 				
 		hermite.init(xn, fn, dn);
 		for(int i = 0; i < spline_point_count; i++){
@@ -485,8 +473,8 @@ public class KeyframePlotter extends PApplet {
 			float location = (float)i * interval;
 			
 			// Don't exceed the maximum x position due to rounding
-			if(location > key_frames.get(key_frames.size()-1).suX)
-				location = key_frames.get(key_frames.size()-1).suX;
+			if(location > control_handles.get(control_handles.size()-1).getGridX())
+				location = control_handles.get(control_handles.size()-1).getGridX();
 			
 			hermite.cubic_spline_value((float)i * interval);
 			spline_abscissa[i] = location;
@@ -534,10 +522,6 @@ public class KeyframePlotter extends PApplet {
 			clear_kf.draw();
 			bounce.set(false);
 		}
-		
-	//	print("X locked: ");
-		//println(lock_x.clicked);
-			
 	}
 	
 	
@@ -578,19 +562,15 @@ public class KeyframePlotter extends PApplet {
 		updateMousePos();
 		
 		// Draw key frame points and control handles
-		for(int i = 0; i < key_frames.size(); i++){			
-			Button this_point = key_frames.get(i);			
-			this_point.label = Integer.toString(i + 1);
-			this_point.posX = grid.x_px(this_point.suX);
-			this_point.posY = grid.y_px(this_point.suY);
-			this_point.draw();
+		for(int i = 0; i < control_handles.size(); i++){			
 			ControlHandle this_handle = control_handles.get(i);
-			this_handle.setLoc(this_point.posX, this_point.posY);
+			this_handle.setLabel(Integer.toString(i + 1));
+			//this_handle.setLocGrid(this_handle.getGridX(), this_handle.getGridY());
 			this_handle.draw();
 		}		
 		
 		// Update the spline calculation
-		if(key_frames.size() >= 2)
+		if(control_handles.size() >= 2)
 			updateSpline();
 		
 		// Draw motor position indicator
@@ -598,25 +578,18 @@ public class KeyframePlotter extends PApplet {
 		
 		// Draw position and velocity splines if data is available
 		if(spline_available){
-		    // If both of the coordinates have now been set, draw the point:
+
 		    for(int i = 0; i < spline_point_count; i ++){
-		    	// draw the point:
+		    	// draw the displacement points
 		  	  	strokeWeight(2);
 		  	  	stroke(255, 0, 0);
-		  	  	if(i == spline_point_count * XY_SIZE - 2)
-		  	  		point(key_frames.get(key_frames.size() - 1).posX, key_frames.get(key_frames.size() - 1).posY);
-		  	  	else
-		  	  		point(grid.x_px(spline_abscissa[i]), grid.y_px(spline_pos_y[i]));
-		    	}	
+	  	  		point(grid.x_px(spline_abscissa[i]), grid.y_px(spline_pos_y[i]));
 
-		    // If both of the coordinates have now been set, draw the point:
-		    for(int i = 0; i < spline_point_count; i++){
-		    	// draw the point:
-		  	  	strokeWeight(2);
-		  	  	stroke(0, 0, 255);
-		  	  	point(grid.x_px(spline_abscissa[i]), grid.y_px(spline_vel_y[i]));
-		    }			
-		}
+		    	// draw the velocity points
+	  	  		stroke(0, 0, 255);
+	  	  		point(grid.x_px(spline_abscissa[i]), grid.y_px(spline_vel_y[i]));
+		    }
+	    }
 		
 		// If a program is running, draw a progress line
 		if(state == RUN){
@@ -651,94 +624,55 @@ public class KeyframePlotter extends PApplet {
 	
 	/** Input state functions **/
 	 
-	void getInput(){
+	void getInput(){		
 		
-		// Check if any key frame point is already clicked
-		boolean kf_clicked = false;
-		
-		for(int i = 0; i < key_frames.size(); i++){
-			Button this_point = key_frames.get(i);
-			if(this_point.clicked == true){				
-				kf_clicked = true;
-				break;
+		// If a control handle is clicked, update it
+		for(int i = 0; i < control_handles.size(); i++){
+			ControlHandle this_handle = control_handles.get(i);
+			if(this_handle.update() == true){
+				data_sent = false;
+				message.draw("");
+				return;					
 			}
 		}
 		
-		// Check if a control handle is being dragged
-		if(!kf_clicked){
-			for(int i = 0; i < key_frames.size(); i++){
-				ControlHandle this_handle = control_handles.get(i);
-					if(this_handle.update() == true)
-						return;			
-			}		
-		}
-
-		// See if an existing key frame is being clicked
-		int cur_kf = overKF();
-
-		// If so, modify it
-		if(cur_kf > 0){
-			modifyKF(cur_kf);
-		}
-		// Otherwise, add a new point
-		else if(grid.overGrid() && cur_kf == -1 && bounce.get() == false){			
+		// If a control handle is right clicked, delete it
+		for(int i = 0; i < control_handles.size(); i++){
+			ControlHandle this_handle = control_handles.get(i);
+			if(this_handle.overCenter() == true && mousePressed && mouseButton == RIGHT && bounce.get() == false){
+				control_handles.remove(i);				
+				data_sent = false;
+				message.draw("");
+				return;
+			}								
+		}		
+		
+		// Otherwise, add a new point if the grid was clicked
+		if(grid.overGrid() && mousePressed && mouseButton == LEFT && bounce.get() == false){			
 				addKF(true);
-			}
-	}
-	
-	
-	int overKF(){
-		
-		// Mouse clicked
-		if(mousePressed == true){
-			// Check if any key frame point is already clicked
-			for(int i = 0; i < key_frames.size(); i++){
-				Button this_point = key_frames.get(i);
-				if(this_point.clicked == true){				
-					return i;
-				}
-			}
-			
-			// If not, see if one is clicked now
-			for(int i = 0; i < key_frames.size(); i++){
-				Button this_point = key_frames.get(i);
-				if(this_point.overButton()){
-					this_point.clicked = true;
-					return i;
-				}
-			}		
-			
-			// If not, then somewhere other than an existing point is being clicked				
-			return -1;
+				data_sent = false;
+				message.draw("");
 		}
-		// Mouse not clicked
-		else {
-			for(int i = 0; i < key_frames.size(); i++){
-				Button this_point = key_frames.get(i);
-				this_point.clicked = false;
-			}
-			return -2;
-		}			
-	}
+	}	
 	
 	void addKF(boolean _mouse_input){
 		
 		// Don't allow more than the maximum key frames to be added
-		if(key_frames.size() == MAX_KF){
+		if(control_handles.size() == MAX_KF){
 			message.draw("Max key frames placed. Please modify or delete existing frames.");
 			return;
 		}
 		
 		// Add a new button object to the key frame object array and then create a working reference
-		key_frames.add(new Button(this));
-		control_handles.add(new ControlHandle(this, grid));
-		Button this_point = key_frames.get(key_frames.size() - 1);		
+		control_handles.add(new ControlHandle(this, grid, control_handles));
+		ControlHandle this_handle = control_handles.get(control_handles.size() - 1);		
 		
 		float posX;
 		float posY;
 		
 		// If this is the first key frame, reset the motor's home position
-		if(key_frames.size() == 1){
+		if(control_handles.size() == 1){
+			print("Adding first point");
 			for(int i = 1; i < MOTOR_COUNT+1; i++){
 				NMXCommand(i, 9);
 				NMXCommand(i, 16);
@@ -752,18 +686,23 @@ public class KeyframePlotter extends PApplet {
 			println(posY);			
 		}		
 		// Adding a key frame by clicking on the grid screen
-		else if(_mouse_input == true){						
+		else if(_mouse_input == true){			
+			println("Adding new point");
 			posX = (int)grid.x();
 			posY = grid.y();		
+			println("X: ");
+			print(posX);
+			print(" Y: ");
+			println(posY);
 		}		
 		// Adding a key frame by querying the motor's current position
 		else{
 			print("Key frames: ");
-			println(key_frames.size());
+			println(control_handles.size());
 			
 			// Check the motor's current position		
 			NMXCommand(1, 106);
-			float last_x = key_frames.get(key_frames.size() - 2).suX;
+			float last_x = control_handles.get(control_handles.size() - 2).getGridX();
 			posX = (grid.x_max - last_x) / 4 + last_x;
 			posY = parseResponse();
 			print("posX: ");
@@ -771,58 +710,20 @@ public class KeyframePlotter extends PApplet {
 			print("posY: ");
 			println(posY);					
 		}
-		this_point.suX = posX;
-		this_point.suY = posY;
-		this_point.init("temp", grid.x_px(posX), grid.y_px(posY), kf_point_radius);
+		this_handle.setLocGrid(posX, posY);		
 		
 		// Re-order the points by position
-		Collections.sort(key_frames, new PointComparator());
+		Collections.sort(control_handles, new PointComparator());
 		
 		// Label and draw them
-		for(int i = 0; i < key_frames.size(); i++){
-			this_point = key_frames.get(i);
-			this_point.label = Integer.toString(i);
+		for(int i = 0; i < control_handles.size(); i++){
+			this_handle = control_handles.get(i);
+			this_handle.setLabel(Integer.toString(i));
+			this_handle.setID(i);
 		}
-		this_point.draw();
-	}
-	
-	void modifyKF(int p_kf){		
-		
-		// For a left click, cycle through the key frame points
-		if(mouseButton == LEFT){
-			
-			Button this_point = key_frames.get(p_kf);	
-			
+		this_handle.draw();
 
-			int x_last = -1;					// X Location of previous point
-			int x_next = (int)grid.x_max;		// X Location of next point
-			int x_this = (int)grid.x();			// X Location of this point
-			
-			// Set X position
-			// If this is not the first point
-			if(p_kf > 0)
-				x_last = (int) key_frames.get(p_kf - 1).suX;			
-			// If this is not the last point
-			if(p_kf < key_frames.size() - 1)
-				x_next = (int) key_frames.get(p_kf + 1).suX;			
-			// Move the X position if it's not crossing any other points and X axis isn't locked
-			if(x_this > x_last && x_this < x_next && !lock_x.clicked){
-				// Set the X position where a key frame would fall, not at the exact mouse position
-				this_point.suX = x_this; // x_this * grid.x_unit_px + grid.x_zero_px;
-			}
-			
-			// Set Y position
-			if(grid.overGridY() && !lock_y.clicked){
-				this_point.suY = grid.y();		
-			}		
-		}
-		else if(mouseButton == RIGHT){
-			key_frames.remove(p_kf);
-			spline_available = false;
-		}		
-		data_sent = false;
-		message.draw("");
-	}
+	}	
 	
 	/*** Send state functions ***/
 	
@@ -837,7 +738,7 @@ public class KeyframePlotter extends PApplet {
 		
 		// Send key frame count / indicate start of transmission
 		println("Sending key frame count");
-		NMXCommand(5, 10, INT_SIZE, key_frames.size());
+		NMXCommand(5, 10, INT_SIZE, control_handles.size());
 		if(timed_out)
 			return;
 		
@@ -857,8 +758,8 @@ public class KeyframePlotter extends PApplet {
 		// **** Send key frame points*** //		
 		
 		// Set the abscissas of the key frame points
-		for(int i = 0; i < key_frames.size(); i++){
-			float temp_val = key_frames.get(i).suX;
+		for(int i = 0; i < control_handles.size(); i++){
+			float temp_val = control_handles.get(i).getGridX();
 			int out_val = Float.floatToIntBits(temp_val);
 			print("Abscissa ");
 			print(i);
@@ -871,8 +772,8 @@ public class KeyframePlotter extends PApplet {
 		}
 		
 		// Set the positions of the key frame points
-		for(int i = 0; i < key_frames.size(); i++){
-			float temp_val = key_frames.get(i).suY;
+		for(int i = 0; i < control_handles.size(); i++){
+			float temp_val = control_handles.get(i).getGridY();
 			int out_val = Float.floatToIntBits(temp_val);
 			print("Position ");
 			print(i);
@@ -885,8 +786,8 @@ public class KeyframePlotter extends PApplet {
 		}
 				
 		// Set the velocities of the key frame points
-		for(int i = 0; i < key_frames.size(); i++){
-			float temp_val = control_handles.get(i).getSlope();
+		for(int i = 0; i < control_handles.size(); i++){
+			float temp_val = control_handles.get(i).getGridSlope();
 			int out_val = Float.floatToIntBits(temp_val);
 			print("Velocity ");
 			print(i);
@@ -907,68 +808,7 @@ public class KeyframePlotter extends PApplet {
 		data_sent = true;		
 		state = GET_INPUT;
 		message.draw("Ready to start program!");
-	}
-	
-	/*** Draw state functions ***/
-	
-	void getSplinePoints(){
-			
-		spline_abscissa = new float[spline_point_count];
-		spline_pos_y = new float[spline_point_count];
-		spline_vel_y = new float[spline_point_count];
-		
-		float increment = key_frames.get(key_frames.size() - 1).suX / (spline_point_count - 1);
-		
-		// Populate abscissa array
-		println("Populating abscissas");
-		for(int i = 0; i < spline_point_count; i++){
-			spline_abscissa[i] = i * increment;
-		}		
-		
-		// Request motor positions
-		println("Position Retrieval loop");
-        for(int i = 0; i < spline_point_count; i++){
-        	
-        	float x_request = i * increment;
-        	int out_val = Float.floatToIntBits(x_request);
-        	print("Requested location: ");
-        	println(x_request);
-        	NMXCommand(5, 102, FLOAT_SIZE, out_val);
-			if(timed_out)
-				return;
-			  
-			float in_val = parseResponse() / 100;		// This will be a float, so need to divide by 100 on master device side
-			spline_pos_y[i] = in_val;
-			  
-			print("Position ");
-			print(i);
-			print(" :");
-			println(in_val);		   
-        }	  
-        
-        // Request motor velocities
- 		println("Position Retrieval loop");
-        for(int i = 0; i < spline_point_count; i++){		
-        	
-        	float x_request = i * increment;
-        	int out_val = Float.floatToIntBits(x_request);
-        	NMXCommand(5, 103, FLOAT_SIZE, out_val);
-        	if(timed_out)
-        		return;
- 		  
-        	float in_val = parseResponse() / 100;		// This will be a float, so need to divide by 100 on master device side
-        	spline_vel_y[i] = in_val;
- 		  
-	 		print("Velocity ");
-	 		print(i);
-	 		print(" :");
-	 		println(in_val);		   
-        }	  
-        
-        spline_available = true;
-        message.draw("Movement curve retrieval complete");
 	}	
-	
 	
 	/*** Run state functions***/
 	void runProgram() {
@@ -986,7 +826,7 @@ public class KeyframePlotter extends PApplet {
 			run_time = millis() - program_start_time;		
 			run_time_sec = run_time / MILLIS_PER_SEC;
 			// Check whether the program has finished
-			if(run_time_sec > key_frames.get(key_frames.size()-1).suX){
+			if(run_time_sec > control_handles.get(control_handles.size()-1).getGridX()){
 				moving = false;
 				state = GET_INPUT;
 			}
