@@ -120,7 +120,7 @@ public class Button {
 	        float rectY = posY - (height / 2);
 	        
 	        // Draw button	        
-	        p.rect(rectX, rectY, width, height);
+	        p.rect(rectX, rectY, width, height, height/8);
 		}
 		// Draw circular button
 		else

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 
 import processing.core.PApplet;
+import processing.core.PConstants;
 import processing.serial.*;
 
 
@@ -15,7 +16,7 @@ public class KeyframePlotter extends PApplet {
 	Serial port;        									// The serial port
 	Bounce bounce = new Bounce(this);						// Mouse debouncing object
 	int grid_top_margin = 50;
-	int grid_bottom_margin = 300;
+	int grid_bottom_margin = 200;
 	int grid_left_margin = 30;
 	int grid_right_margin = 105;	
 	Grid grid = new Grid(this, grid_top_margin, grid_bottom_margin, 
@@ -35,11 +36,13 @@ public class KeyframePlotter extends PApplet {
 	Button get_kf = new Button(this);
 	Button lock_x= new Button(this);
 	Button lock_y = new Button(this);
+	Slider update_rate = new Slider(this);
+	Indicator update_display = new Indicator(this);
 	
 	// Center object
 	Button title = new Button(this);
 	Indicator message = new Indicator(this);
-	Slider slider = new Slider(this);
+	Slider motor_slider = new Slider(this);
 	
 	// Lower tool bar
 	Slider grid_scale_x = new Slider(this);
@@ -118,6 +121,9 @@ public class KeyframePlotter extends PApplet {
 	float run_time_sec = 0;
 	final float MILLIS_PER_SEC = 1000;
 	int cur_vel_pnt = -1;
+	float max_error = 0;
+	float min_error = 0;
+	int vel_update_rate; 
 	
 	// Spline interpolation
 	HermiteSpline hermite = new HermiteSpline(this);
@@ -128,52 +134,29 @@ public class KeyframePlotter extends PApplet {
 		// Open proper com port		
 		port = new Serial(this, Serial.list()[PORT_NUM], 9600);
 		
-		size(800, 900);
+		size(800, 800);
 		background(bgnd_r, bgnd_g, bgnd_b);
 		
 		setGridVals();
 		grid.init(x_max, x_min, x_interval, y_max, y_min, y_interval);
 		grid.draw();
 		
-		// Initialize buttons and indicators in right toolbar
-		int b_count = 8;
-		float b_margin = 10;
-		float b_width = 90;
-		float b_height = (grid.height - (b_count - 1) * b_margin) / b_count;		
-		float b_offset = b_margin + b_height/2;
-		graph_loc.init("Xg", "Yg", width - (75/2) - 15, (b_height/2) + grid.y_min_px, b_width, b_height);
-		mouse_loc.init("Xm", "Ym", graph_loc.posX, graph_loc.y_max_px + b_offset, b_width, b_height);				
-		connect.init("Close Port", graph_loc.posX, mouse_loc.y_max_px + b_offset, b_width, b_height);
-		mem_check.init("Mem Check", graph_loc.posX, connect.y_max_px + b_offset, b_width, b_height);
-		send.init("Send", graph_loc.posX, mem_check.y_max_px + b_offset, b_width, b_height);			
-		get_kf.init("Get KF", graph_loc.posX, send.y_max_px + b_offset, b_width, b_height);
-		lock_x.init("Lock X", graph_loc.posX, get_kf.y_max_px + b_offset, b_width, b_height);
-		lock_y.init("Lock Y", graph_loc.posX, lock_x.y_max_px + b_offset, b_width, b_height);
-		lock_x.clicked = false;
-		lock_y.clicked = false;		
-		
-		// Initialize left side toolbar
-		int grid_scale_thickness = 15;		
+		// Initialize grid scales and mid-screen indicators
+		int grid_scale_thickness = 15;
+		float i_height = 30;
+		float i_margin = 10;
 		grid_scale_y.init(grid.height, grid_scale_thickness, true, grid_left_margin / 2, grid.y_mid_px, min_y_inc, max_y_inc, false);
 		grid_scale_y.setSlidePercent(0);
 		grid_scale_y.draw();
-		
-		// Initialize mid-screen indicators
-		float i_height = 30;
-		float i_margin = 10;		
-		
 		title.init("Key Frame Editor", width/2, 25, 200, i_height);
 		title.draw();
-
 		grid_scale_x.init(grid.width, grid_scale_thickness, false, grid.x_mid_px, grid.y_max_px + i_margin + grid_scale_thickness/2, min_x_inc, max_x_inc, false);
 		grid_scale_x.setSlidePercent(0);
 		grid_scale_x.draw();
-		
 		message.init("Message", "NULL", grid.x_center, grid_scale_x.getYMax() + i_margin + i_height/2, grid.width, i_height);		
 		message.draw(" ");
-
-		slider.init(grid.width, i_height, false, grid.x_mid_px, message.y_max_px + i_margin + i_height/2, -1, 1, true);
-		slider.draw();		
+		motor_slider.init(grid.width, i_height, false, grid.x_mid_px, message.y_max_px + i_margin + i_height/2, -1, 1, true);
+		motor_slider.draw();	
 		
 		// Initialize lower toolbar buttons
 		int lt_count = 4;
@@ -181,12 +164,35 @@ public class KeyframePlotter extends PApplet {
 		float lt_margin = 10;
 		float lt_width = (grid.width - (lt_count - 1) * lt_margin) / lt_count;		
 		float lt_offset = lt_margin + lt_width/2;
-		float lt_y_pos = slider.getYMax() + lt_height/2 + lt_margin;
-		clear_kf.init("Clear KFs", slider.getXMin() + lt_width / 2, lt_y_pos, lt_width, lt_height);			
+		float lt_y_pos = motor_slider.getYMax() + lt_height/2 + lt_margin;
+		clear_kf.init("Clear KFs", motor_slider.getXMin() + lt_width / 2, lt_y_pos, lt_width, lt_height);			
 		go_home.init("Snd Mot Home", clear_kf.x_max_px + lt_offset, lt_y_pos, lt_width, lt_height);
 		start_program.init("Start Program", go_home.x_max_px + lt_offset, lt_y_pos, lt_width, lt_height);
 		stop_motors.init("Stop Motors", start_program.x_max_px + lt_offset, lt_y_pos, lt_width, lt_height);
 		
+		// Initialize buttons and indicators in right toolbar
+		int b_count = 8;
+		float b_margin = 10;
+		float b_width = 90;
+		float b_height = (grid.height - (b_count - 1) * b_margin) / b_count;		
+		float b_offset = b_margin + b_height/2;
+		float b_column_x = width - (75/2) - 15;
+		graph_loc.init("Xg", "Yg", b_column_x, (b_height/2) + grid.y_min_px, b_width, b_height);
+		mouse_loc.init("Xm", "Ym", b_column_x, graph_loc.y_max_px + b_offset, b_width, b_height);				
+		connect.init("Close Port", b_column_x, mouse_loc.y_max_px + b_offset, b_width, b_height);
+		mem_check.init("Mem Check", b_column_x, connect.y_max_px + b_offset, b_width, b_height);
+		send.init("Send", b_column_x, mem_check.y_max_px + b_offset, b_width, b_height);			
+		get_kf.init("Get KF", b_column_x, send.y_max_px + b_offset, b_width, b_height);
+		lock_x.init("Lock X", b_column_x, get_kf.y_max_px + b_offset, b_width, b_height);
+		lock_y.init("Lock Y", b_column_x, lock_x.y_max_px + b_offset, b_width, b_height);
+		lock_x.clicked = false;
+		lock_y.clicked = false;		
+		update_rate.init(clear_kf.y_max_px - grid_scale_x.getYMin(), 20, true, b_column_x - b_width/4, 
+				(clear_kf.y_max_px + grid_scale_x.getYMin()) / 2, 0, 1, false);
+		update_rate.setSlidePercent((float)0.25);
+		update_rate.draw();
+		update_display.init("", "NULL", b_column_x + b_width/4, update_rate.getYMid(), 40, 30);
+				
 		// Enable the motors
 		for(int i = 0; i < MOTOR_COUNT; i++){
 			NMXCommand(i, 3, BYTE_SIZE, 1);
@@ -250,7 +256,7 @@ public class KeyframePlotter extends PApplet {
 		
 		
 		// Slider is being used
-		if(slider.clicked()){
+		if(motor_slider.clicked()){
 			
 			// Make sure we're in joystick mode
 			if(!joystick_mode){				
@@ -262,7 +268,7 @@ public class KeyframePlotter extends PApplet {
 				}
 				joystick_mode = true;
 			}
-			float speed = max_speed * slider.getVal();
+			float speed = max_speed * motor_slider.getVal();
 			print("Speed: ");
 			println(speed);
 			println(Float.floatToIntBits(speed));
@@ -296,6 +302,7 @@ public class KeyframePlotter extends PApplet {
 		check_time = millis();
 		
 	}
+	
 	void updatePosition(){		
 		if(moving){
 			// Get the current motor position
@@ -309,6 +316,17 @@ public class KeyframePlotter extends PApplet {
 					moving  = false;
 					return;				
 				}
+			}
+			// If a program is running, show the current error
+			if(state == RUN){
+				
+				hermite.cubic_spline_value(run_time_sec);
+				float error = current_pos - hermite.getPos();
+				if(error > max_error)
+					max_error = error;
+				else if (error < min_error)
+					min_error = error;
+				message.draw(Float.toString(error));
 			}
 		}		
 	}
@@ -433,8 +451,7 @@ public class KeyframePlotter extends PApplet {
 			return;
 		}
 		println("********** Starting program **********");
-		cur_vel_pnt = -1;		
-		program_start_time = millis();
+		cur_vel_pnt = -1;
 		runProgram();
 	}
 	
@@ -442,6 +459,8 @@ public class KeyframePlotter extends PApplet {
 		for(int i = 0; i < MOTOR_COUNT; i++){
 			NMXCommand(i, 4);
 			moving = false;
+			joystick_mode = false;
+			NMXCommand(0, 23, BYTE_SIZE, 0);
 		}
 		
 		// Go back to input state (in case a program is running);
@@ -539,11 +558,16 @@ public class KeyframePlotter extends PApplet {
 		get_kf.draw();
 		lock_x.draw();
 		lock_y.draw();
+		update_rate.update();
+		
+		// Find the new update rate and indicate it
+		vel_update_rate = floor((float)(Math.pow(update_rate.getVal(), 2) * 99) + 1);
+		update_display.draw(Integer.toString(vel_update_rate));
 				
 		// Draw center items
 		title.draw();
 		message.draw();
-		slider.update();
+		motor_slider.update();
 		
 		// Draw lower toolbar
 		clear_kf.draw();
@@ -551,7 +575,7 @@ public class KeyframePlotter extends PApplet {
 		start_program.draw();
 		stop_motors.draw();
 		
-		// Draw right toolbar
+		// Draw grid scales
 		grid_scale_x.update();
 		grid_scale_y.update();
 		
@@ -561,11 +585,11 @@ public class KeyframePlotter extends PApplet {
 		grid.draw();
 		updateMousePos();
 		
-		// Draw key frame points and control handles
+		// Draw control handles
 		for(int i = 0; i < control_handles.size(); i++){			
 			ControlHandle this_handle = control_handles.get(i);
 			this_handle.setLabel(Integer.toString(i + 1));
-			//this_handle.setLocGrid(this_handle.getGridX(), this_handle.getGridY());
+			this_handle.setLocGrid(this_handle.getGridX(), this_handle.getGridY());
 			this_handle.draw();
 		}		
 		
@@ -643,6 +667,10 @@ public class KeyframePlotter extends PApplet {
 				control_handles.remove(i);				
 				data_sent = false;
 				message.draw("");
+				// Reset the control handle id numbers
+				for(int j = 0; j < control_handles.size(); j++){
+					control_handles.get(j).setID(j);
+				}
 				return;
 			}								
 		}		
@@ -817,8 +845,18 @@ public class KeyframePlotter extends PApplet {
 		if(state != RUN){
 			println("Sending start command");
 			state = RUN;
-			NMXCommand(5, 20);
+			// Set the update rate			
+			NMXCommand(5, 15, INT_SIZE, vel_update_rate);
+			
+			// Set the flag to update the motor position indicator
 			moving = true;
+			
+			// Start the program
+			NMXCommand(5, 20);
+			
+			// Set the start time
+			program_start_time = millis();
+			
 		}
 		
 		// Update the running time
@@ -828,6 +866,10 @@ public class KeyframePlotter extends PApplet {
 			// Check whether the program has finished
 			if(run_time_sec > control_handles.get(control_handles.size()-1).getGridX()){
 				moving = false;
+				String error_message = "Max error: " + Float.toString(max_error) + " Min error: " + Float.toString(min_error);
+				max_error = 0;
+				min_error = 0;
+				message.draw(error_message);
 				state = GET_INPUT;
 			}
 		}

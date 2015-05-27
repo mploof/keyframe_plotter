@@ -201,7 +201,7 @@ public class Slider {
 		s_x_rect = s_x_mid_px - s_width/2;
 		s_y_rect = s_y_mid_px - s_height/2;
 			
-		p.rect(s_x_rect, s_y_rect, s_width, s_height);
+		p.rect(s_x_rect, s_y_rect, s_width, s_height, s_thickness/2);
 		
 		
 		// Draw cursor		
@@ -241,6 +241,6 @@ public class Slider {
 			c_y_min_px = c_y_mid_px - c_length / 2;
 		}
 		p.fill(c_r, c_g, c_b);
-		p.rect(c_x_rect, c_y_rect, c_width, c_height);		
+		p.rect(c_x_rect, c_y_rect, c_width, c_height, s_thickness/2);		
 	}
 }

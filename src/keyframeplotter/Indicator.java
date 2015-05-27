@@ -91,7 +91,7 @@ public class Indicator {
         float rectY = posY - (height / 2);
         
         // Draw button	        
-        p.rect(rectX, rectY, width, height);
+        p.rect(rectX, rectY, width, height, height/8);
         
         // Set text parameters
         p.fill(r_t, g_t, b_t);

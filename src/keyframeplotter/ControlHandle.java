@@ -9,7 +9,7 @@ import java.util.ArrayList;
 public class ControlHandle{
 	// Processing object
 	private PApplet p;
-	private Grid grid;
+	private static Grid grid;
 	private static ArrayList<ControlHandle> control_handles;
 	private String label;
 	private float center_radius, center_x, center_y, gridX, gridY, handle_radius, handle_x[], handle_y[], line_margin, angle;
